@@ -12,7 +12,7 @@ config.loggers.forEach(function(logger) {
     if (logger.options.timeFormat) {
         logger.options.formatter = function(options) {
             return (
-                moment().format("YYYY-MM-DD HH:mm:ss.SSS Z") +
+                moment().format(logger.options.timeFormat) +
                 " [" +
                 options.level +
                 "] " +
