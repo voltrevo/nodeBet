@@ -290,7 +290,7 @@ exports.exchange = new (function()
         })
         
         user.router.route('order_delete', function(order_delete) {
-            var order = user.orders[order_delete.value.content.tag];
+            var order = user.orders[order_delete.value.content];
             
             if (order) {
                 order.pull();

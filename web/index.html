@@ -69,7 +69,6 @@ var exports = {};
 <script src='js/config.js'></script>
 <script src='js/logger.js'></script>
 <script src='js/utils.js'></script>
-<script src='js/type_check.js'></script>
 <!-- <script src='js/peer.js'></script> -->
 <script src='js/quoter.js'></script>
 <script src='js/web_utils.js'></script>
@@ -101,7 +100,6 @@ var log = app.log;
 
 var rand_hex = exports.rand_hex;
 var clamp = exports.clamp;
-var type_check = exports.type_check;
 
 var username;
 var chat = null
@@ -288,78 +286,51 @@ function send_order_insert(side, price, volume, trade_cb, tag_cb)
 
     order.sock = orderSock
 
-    order.sock.receive(sockception.util.router()
-        .transform(function(value) {
-            return value.route
-        })
-        .route('tag', function(tag) { // TODO: tags should be obsolete now
-            order.tag = tag.value;
-            orders[tag.value] = order;
-            
-            order.order_status = 'active';
-            order.web_elements.status_cell.innerHTML = 'active';
+    order.sock.route('tag').receive(once(function(tag) { // TODO: tags should be obsolete now
+        order.tag = tag.value;
+        orders[tag.value] = order;
+        
+        order.order_status = 'active';
+        order.web_elements.status_cell.innerHTML = 'active';
 
-            // TODO: do this better
-            if (tag_cb)
-            {
-                tag_cb();
-            }
-        })
-        .route('trade', function(tradeSock) {
-            var trade = tradeSock.value.content
+        // TODO: do this better
+        if (tag_cb) {
+            tag_cb();
+        }
+    }))
 
-            position += (order.side === 'buy' ? 1 : -1) * trade.volume;
-            cash += (order.side === 'buy' ? -1 : 1) * trade.price * trade.volume;
-            
-            document.getElementById('pos_display').innerHTML = position;
-            document.getElementById('pos_display').style.backgroundColor = (order.side === 'buy' ? '#88FF88' : 'FF8888');
-            
-            // TODO: Need to clear timeout if a new pos change comes in
-            setTimeout(
-                function()
-                {
-                    document.getElementById('pos_display').style.backgroundColor = '';
-                },
-                500);
-            
-            document.getElementById('cash_display').innerHTML = format_cash(cash + instrument_cash);
-            update_valuation(); // Takes care of valuation change. TODO: Do this better.
-            
-            create_trade(
-                order.side,
-                trade.price,
-                trade.volume);
-            
-            order.volume -= trade.volume;
-            order.web_elements.volume_cell.innerHTML = order.volume;
-            
-            if (order.volume === 0)
-            {
-                order.order_status = 'fully traded';
-                order.web_elements.status_cell.innerHTML = order.order_status;
-                
-                setTimeout(
-                    function()
-                    {
-                        remove_element(order.web_elements.row);
-                        delete orders[order.tag];
-                    },
-                    500);
-            }
-            
-            if (trade_cb)
-            {
-                trade_cb();
-            }
-        })
-        .route('deleted', function() {
-            handle_order_deleted(order)
-        })
-        .route('error', function(error) {
-            order.order_status = 'rejected';
-            order.web_elements.status_cell.innerHTML = 'rejected';
+    order.sock.route('trade').receive(function(tradeSock) {
+        var trade = tradeSock.value
 
-            alertify.error(error.value.content);
+        position += (order.side === 'buy' ? 1 : -1) * trade.volume;
+        cash += (order.side === 'buy' ? -1 : 1) * trade.price * trade.volume;
+        
+        document.getElementById('pos_display').innerHTML = position;
+        document.getElementById('pos_display').style.backgroundColor = (order.side === 'buy' ? '#88FF88' : 'FF8888');
+        
+        // TODO: Need to clear timeout if a new pos change comes in
+        setTimeout(
+            function()
+            {
+                document.getElementById('pos_display').style.backgroundColor = '';
+            },
+            500);
+        
+        document.getElementById('cash_display').innerHTML = format_cash(cash + instrument_cash);
+        update_valuation(); // Takes care of valuation change. TODO: Do this better.
+        
+        create_trade(
+            order.side,
+            trade.price,
+            trade.volume);
+        
+        order.volume -= trade.volume;
+        order.web_elements.volume_cell.innerHTML = order.volume;
+        
+        if (order.volume === 0)
+        {
+            order.order_status = 'fully traded';
+            order.web_elements.status_cell.innerHTML = order.order_status;
             
             setTimeout(
                 function()
@@ -368,8 +339,32 @@ function send_order_insert(side, price, volume, trade_cb, tag_cb)
                     delete orders[order.tag];
                 },
                 500);
-        })
-    )
+        }
+        
+        if (trade_cb)
+        {
+            trade_cb();
+        }
+    })
+
+    order.sock.route('deleted').receive(once(function() {
+        handle_order_deleted(order)
+    }))
+
+    order.sock.route('error').receive(function(error) {
+        order.order_status = 'rejected';
+        order.web_elements.status_cell.innerHTML = 'rejected';
+
+        alertify.error(error.value);
+        
+        setTimeout(
+            function()
+            {
+                remove_element(order.web_elements.row);
+                delete orders[order.tag];
+            },
+            500);
+    })
 
     order.tag = null;
     
@@ -405,14 +400,7 @@ function create_order(order)
     
     order.web_elements.remove_cell.onclick = function()
     {
-        if (order.tag)
-        {
-            send_delete(order.tag, false);
-        }
-        else
-        {
-            alertify.error('Cannot delete order because it has not been acknowledged by the exchange');
-        }
+        send_delete(order.tag, false);
     }
     
     for (var key in order.web_elements)
@@ -490,11 +478,10 @@ function send_delete(tag, from_quoter)
         order.order_status = 'deleting';
         order.web_elements.status_cell.innerHTML = 'deleting';
         
-        order.sock.send({
+        // TODO: argh why sock and not order.sock?
+        sock.send({
             route: 'order_delete',
-            content: {
-                tag: tag
-            }
+            content: tag
         }).receive(sockception.util.router()
             .transform(function(value) {
                 return value.route
@@ -1101,23 +1088,6 @@ function create_login_requests()
         })
         .route('status', function(status) {
             var is = status.value.content
-
-            if (is.instrument_status === 'open')
-            {
-                var ret = type_check(
-                    {
-                        bottom_price: 'number',
-                        tick_size: 'number',
-                        top_price: 'number'
-                    },
-                    is.tick_table)
-                
-                if (!ret.result)
-                {
-                    log.error('Tick table type check failed: ' + ret.detail);
-                    return;
-                }
-            }
             
             var is_market_open_before = is_market_open.get();
             is_market_open.set(is.instrument_status === 'open');

@@ -4,6 +4,7 @@ var assert = require('assert')
 var instrument = require('./instrument').instrument;
 var log = require("./winstonWrapper")
 var sockception = require("sockception")
+var once = sockception.util.once
 
 exports.instrument_manager = function(args)
 {
@@ -38,41 +39,27 @@ exports.instrument_manager = function(args)
         user,
         order_insert)
     {
-        if (self.get_status() !== 'open') {
-            order_insert.send({
-                route: 'error',
-                content: 'Instrument not open'
-            })
+        var err = order_insert.route('error')
 
+        if (self.get_status() !== 'open') {
+            err.send('Instrument not open')
             return
         }
 
         var oi = order_insert.value.content
         
         if (!self.instrument.check_price(oi.price)) {
-            order_insert.send({
-                route: 'error',
-                content: 'Price invalid'
-            })
-
+            err.send('Price invalid')
             return
         }
         
         if (oi.side !== 'buy' && oi.side !== 'sell') {
-            order_insert.send({
-                route: 'error',
-                content: 'Side invalid'
-            })
-
+            err.send('Side invalid')
             return
         }
 
         if (oi.volume !== Math.round(oi.volume) || oi.volume < 0) {
-            order_insert.send({
-                route: 'error',
-                content: 'Volume invalid'
-            })
-
+            err.send('Volume invalid')
             return
         }
 
@@ -85,12 +72,9 @@ exports.instrument_manager = function(args)
             volume_remaining: oi.volume,
             trade: function(p, v)
             {
-                order_insert.send({
-                    route: 'trade',
-                    content: {
-                        price: p,
-                        volume: v
-                    }
+                order_insert.route('trade').send({
+                    price: p,
+                    volume: v
                 })
                 
                 if (!self.user_positions.hasOwnProperty(user.uname)) {
@@ -119,7 +103,7 @@ exports.instrument_manager = function(args)
                 var success = (self.instrument ? self.instrument.pull_order(order) : false);
     
                 if (success) {
-                    order_insert.send({route: 'deleted'})
+                    order_insert.route('deleted').send()
                     delete self.orders[order.tag]
                     delete user.orders[order.tag]
                 } else {
@@ -134,22 +118,12 @@ exports.instrument_manager = function(args)
         
         self.orders[order.tag] = order;
         user.orders[order.tag] = order;
+
+        order_insert.route('cancel').receive(once(function() {
+            order.pull()
+        }))
         
-        order_insert.receive(sockception.util.router()
-            .transform(function(value) {
-                return value.route
-            })
-            .route('cancel', sockception.util.once(function() {
-                order.pull()
-            }))
-            .default(function() {
-                log.error('Received unknown ')
-            }))
-        
-        order_insert.send({
-            route: 'tag',
-            content: order.tag
-        })
+        order_insert.route('tag').send(order.tag)
 
         self.instrument.process_order(order);
     }
