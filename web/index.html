@@ -279,12 +279,7 @@ function send_order_insert(side, price, volume, trade_cb, tag_cb)
         expiry: null
     };
     
-    var orderSock = sock.send({
-        route: 'order_insert',
-        content: order
-    })
-
-    order.sock = orderSock
+    order.sock = sock.route('order_insert').send(order)
 
     order.sock.route('tag').receive(once(function(tag) { // TODO: tags should be obsolete now
         order.tag = tag.value;
@@ -479,20 +474,15 @@ function send_delete(tag, from_quoter)
         order.web_elements.status_cell.innerHTML = 'deleting';
         
         // TODO: argh why sock and not order.sock?
-        sock.send({
-            route: 'order_delete',
-            content: tag
-        }).receive(sockception.util.router()
-            .transform(function(value) {
-                return value.route
-            })
-            .route('success', function() {
-                handle_order_deleted(order)
-            })
-            .route('failure', function() {
-                console.log('Tried to delete order not found at exchange (probably traded)')
-            })
-        )
+        var order_delete = sock.route('order_delete').send(tag)
+
+        order_delete.route('success').receive(function() {
+            handle_order_deleted(order)
+        })
+
+        order_delete.route('failure').receive(function() {
+            console.log('Tried to delete order not found at exchange (probably traded)')
+        })
     }
 }
 
@@ -658,7 +648,7 @@ window.onload = function()
     
     document.getElementById('startup_table').onkeydown = function(e)
     {
-        if (e.keyCode == 13)
+        if (e.keyCode === 13)
         {
             switch (get_selector_value('startup_selector'))
             {
@@ -763,12 +753,7 @@ function login()
     }
     
     var run = function() {
-        sock.send({
-            route: 'clue_request',
-            content: {
-                uname: username
-            }
-        }).receive(function(clue) {
+        sock.route('clue_request').send(username).receive(function(clue) {
             var startup_type = get_selector_value('startup_selector');
             
             var passwd = document.getElementById(
@@ -784,47 +769,44 @@ function login()
             var hash = hex_sha256(clue.value + passwd);
             var next_clue = rand_hex();
             
-            sock.send({
-                route: 'login_request',
-                content: {
-                    uname: username,
-                    hash: hash,
-                    next_clue: next_clue,
-                    next_double_hash: hex_sha256(hex_sha256(next_clue + passwd))
-                }
-            }).receive(sockception.util.router()
-                .transform(function(value) {
-                    return (typeof value === "string" ? value : value.route)
-                })
-                .route('success', handle_login)
-                .route('failure', function() {
-                    var failure_element = (
-                        get_selector_value('startup_selector') === 'login' ?
-                        document.getElementById('login_password_input') :
-                        document.getElementById('change_password_old_password_input'));
-                    
-                    failure_element.value = 'login failure';
-                    failure_element.type = 'text';
-                    
-                    setTimeout(
-                        function()
-                        {
-                            failure_element.value = '';
-                            failure_element.type = 'password';
-                        },
-                        500);
-                })
-                .route('already_logged_in', function() {
-                    var failure_element = document.getElementById('username_input');
-                    failure_element.value = 'already logged in';
-                    
-                    setTimeout(
-                        function()
-                        {
-                            failure_element.value = '';
-                        },
-                        500);
-                }))
+            var login_request = sock.route('login_request').send({
+                uname: username,
+                hash: hash,
+                next_clue: next_clue,
+                next_double_hash: hex_sha256(hex_sha256(next_clue + new_passwd))
+            })
+            
+            login_request.route('success').receive(handle_login)
+
+            login_request.route('failure').receive(function() {
+                var failure_element = (
+                    get_selector_value('startup_selector') === 'login' ?
+                    document.getElementById('login_password_input') :
+                    document.getElementById('change_password_old_password_input'));
+                
+                failure_element.value = 'login failure';
+                failure_element.type = 'text';
+                
+                setTimeout(
+                    function()
+                    {
+                        failure_element.value = '';
+                        failure_element.type = 'password';
+                    },
+                    500);
+            })
+
+            login_request.route('already_logged_in').receive(function() {
+                var failure_element = document.getElementById('username_input');
+                failure_element.value = 'already logged in';
+                
+                setTimeout(
+                    function()
+                    {
+                        failure_element.value = '';
+                    },
+                    500);
+            })
         })
     }
 
@@ -884,29 +866,24 @@ function handle_login(newSocket)
                 tick_size = parseFloat(tick_size);
                 top_price = parseFloat(top_price);
                 
-                sock.send({
-                    route: 'open_instrument',
-                    content: {
-                        instrument_name: 'test_instrument',
-                        description: desc,
-                        tick_table:
-                        {
-                            bottom_price: bottom_price,
-                            tick_size: tick_size,
-                            top_price: top_price
-                        }
+                var open_instrument = sock.route('open_instrument').send({
+                    instrument_name: 'test_instrument',
+                    description: desc,
+                    tick_table:
+                    {
+                        bottom_price: bottom_price,
+                        tick_size: tick_size,
+                        top_price: top_price
                     }
-                }).receive(once(sockception.util.router()
-                    .transform(function(value) {
-                        return value.route
-                    })
-                    .route('error', function(s) {
-                        alertify.error(s.value.content)
-                    })
-                    .route('success', function() {
-                        // TODO: should something go here?
-                    })
-                )) // TODO: not sure how I feel about putting this on this line... make this uniform
+                })
+
+                open_instrument.route('error').receive(function(s) {
+                    alertify.error(s.value)
+                })
+
+                open_instrument.route('success').receive(function() {
+                    // TODO: should something go here?
+                })
                 
             })})})});
         }
@@ -921,27 +898,23 @@ function handle_login(newSocket)
         {
             unbind_hotkeys();
             
-            alertify.prompt(
-                'Enter settlement price',
-                function(e, price)
-                {
-                    bind_hotkeys();
-                    
-                    sock.send({
-                        route: 'close_instrument',
-                        content: {
-                            instrument_name: 'test_instrument',
-                            value: parseFloat(price)
-                        }
-                    }).receive(once(sockception.util.router()
-                        .route('error', function(err) {
-                            alertify.error(err.value.content)
-                        })
-                        .route('success', function() {
-                            // TODO: do something here?
-                        })
-                    ))
-                });
+            alertify.prompt('Enter settlement price', function(e, price)
+            {
+                bind_hotkeys();
+                
+                var close_instrument = sock.route('close_instrument').send({
+                    instrument_name: 'test_instrument',
+                    value: parseFloat(price)
+                })
+
+                close_instrument.route('error').receive(function(err) {
+                    alertify.error(err.value)
+                })
+
+                close_instrument.route('success').receive(function() {
+                    // TODO: do something here?
+                })
+            })
         }
         
         document.getElementById('admin_display').appendChild(close_instrument_button);
@@ -951,12 +924,7 @@ function handle_login(newSocket)
         rego_key_button.type = 'button';
         
         rego_key_button.onclick = function() {
-            sock.send({
-                route: 'clue_request',
-                content: {
-                    uname: username
-                }
-            }).receive(function(clue) {
+            sock.route('clue_request').send(username).receive(function(clue) {
                 unbind_hotkeys()
 
                 alertify.prompt('Password', function(e, passwd) {
@@ -965,25 +933,20 @@ function handle_login(newSocket)
 
                     var next_clue = utils.rand_hex();
                     
-                    sock.send({
-                        route: 'registration_key_request',
-                        content: {
-                            hash: hex_sha256(clue + passwd),
-                            next_clue: next_clue,
-                            next_double_hash: hex_sha256(hex_sha256(next_clue + passwd)),
-                            new_user: new_user
-                        }
-                    }).receive(once(sockception.util.router()
-                        .transform(function(value) {
-                            return value.route
-                        })
-                        .route('registration_key', function(key) {
-                            alertify.alert(key.value.content)
-                        })
-                        .route('failure', function() {
-                            alertify.error('Wrong password')
-                        })
-                    ))
+                    var rkr = sock.route('registration_key_request').send({
+                        hash: hex_sha256(clue + passwd),
+                        next_clue: next_clue,
+                        next_double_hash: hex_sha256(hex_sha256(next_clue + passwd)),
+                        new_user: new_user
+                    })
+
+                    rkr.route('registration_key').receive(function(key) {
+                        alertify.alert(key.value)
+                    })
+
+                    rkr.route('failure').receive(function() {
+                        alertify.error('Wrong password')
+                    })
                 })})
             })
         }
@@ -995,13 +958,8 @@ function handle_login(newSocket)
         force_quoters_button.type = 'button';
 
         force_quoters_button.onclick = function() {
-            sock.send({
-                route: 'force_quoters_on',
-                content: {
-                    instrument_name: 'test_instrument'
-                }
-            })
-        };
+            sock.route('force_quoters_on').send('test_instrument')
+        }
         
         document.getElementById('admin_display').appendChild(force_quoters_button);
         document.getElementById('admin_display').appendChild(document.createElement('br'));
@@ -1024,126 +982,119 @@ function handle_login(newSocket)
     setInterval(
         function() {
             var send_time = new Date();
-            sock.send({
-                route: 'ping'
-            }).receive(once(function() {
+
+            sock.route('ping').send().receive(function() {
                 log.info('Ping time: ' + (new Date() - send_time) + 'ms');
-            }))
+            })
         },
         10000)
 }
 
 function create_login_requests()
 {
-    sock.send({
-        route: 'cash'
-    }).receive(once(function(cash_update) {
+    sock.route('cash').send().receive(once(function(cash_update) {
         cash = cash_update.value
         document.getElementById('cash_display').innerHTML = format_cash(cash + instrument_cash)
         update_valuation()
     }))
 
-    chat = sock.send({
-        route: 'chat'
-    })
+    chat = sock.route('chat').send()
 
     chat.receive(function(msgInfo) {
         add_message(msgInfo.value.uname + ': ' + msgInfo.value.msg)
     })
 
-    sock.send({
-        route: 'instrument_subscription',
-        content: {
-            instrument_name: 'test_instrument'
+    var instrument_subscription = sock.route('instrument_subscription').send('test_instrument')
+    
+    instrument_subscription.route('position_update').receive(function(position_update) {
+        instrument_cash = position_update.value.cash;
+        document.getElementById('cash_display').innerHTML = format_cash(cash + instrument_cash);
+        
+        position = position_update.value.instrument;
+        document.getElementById('pos_display').innerHTML = position;
+        
+        update_valuation();
+    })
+
+    instrument_subscription.route('price_update').receive(function(price_update) {
+        var pu = price_update.value
+
+        if (pu.volume > 0)
+        {
+            ldr.bid_cells.get(pu.price).innerHTML = pu.volume;
         }
-    }).receive(sockception.util.router()
-        .transform(function(value) {
-            return value.route
-        })
-        .route('position_update', function(position_update) {
-            instrument_cash = position_update.value.content.cash;
-            document.getElementById('cash_display').innerHTML = format_cash(cash + instrument_cash);
-            
-            position = position_update.value.content.instrument;
-            document.getElementById('pos_display').innerHTML = position;
-            
-            update_valuation();
-        })
-        .route('price_update', function(price_update) {
-            var pu = price_update.value.content
+        else if (pu.volume < 0)
+        {
+            ldr.offer_cells.get(pu.price).innerHTML = -pu.volume;
+        }
+        else
+        {
+            ldr.bid_cells.get(pu.price).innerHTML = '';
+            ldr.offer_cells.get(pu.price).innerHTML = '';
+        }
+    })
 
-            if (pu.volume > 0)
-            {
-                ldr.bid_cells.get(pu.price).innerHTML = pu.volume;
-            }
-            else if (pu.volume < 0)
-            {
-                ldr.offer_cells.get(pu.price).innerHTML = -pu.volume;
-            }
-            else
-            {
-                ldr.bid_cells.get(pu.price).innerHTML = '';
-                ldr.offer_cells.get(pu.price).innerHTML = '';
-            }
-        })
-        .route('status', function(status) {
-            var is = status.value.content
-            
-            var is_market_open_before = is_market_open.get();
-            is_market_open.set(is.instrument_status === 'open');
+    instrument_subscription.route('status').receive(function(status) {
+        var is = status.value
+        
+        var is_market_open_before = is_market_open.get();
+        is_market_open.set(is.instrument_status === 'open');
 
-            if (!is_market_open_before && is_market_open.get())
-            {
-                ldr.build(
-                    is.tick_table.bottom_price,
-                    is.tick_table.tick_size,
-                    is.tick_table.top_price);
-                
-                qr.setup();
-                
-                document.getElementById('description_display').innerHTML = is.description;
-            }
-        })
-        .route('open', function(open) {
-            var op = open.value.content
-
-            clear_trades()
-
+        if (!is_market_open_before && is_market_open.get())
+        {
             ldr.build(
-                op.tick_table.bottom_price,
-                op.tick_table.tick_size,
-                op.tick_table.top_price);
+                is.tick_table.bottom_price,
+                is.tick_table.tick_size,
+                is.tick_table.top_price);
             
-            theo.set(0.5 * (op.tick_table.bottom_price + op.tick_table.top_price));
-            is_market_open.set(true);
-
             qr.setup();
             
-            document.getElementById('description_display').innerHTML = op.description;
-        })
-        .route('close', function(close) {
-            is_market_open.set(false);
-            theo.set(0);
-            document.getElementById('description_display').innerHTML = '<font color=\'grey\'>[Closed]</font>';
+            document.getElementById('description_display').innerHTML = is.description;
+        }
+    })
 
-            cash += instrument_cash;
-            instrument_cash = 0;
+    instrument_subscription.route('open').receive(function(open) {
+        var op = open.value
 
-            cash += position * close.value.content; // TODO: cash is an observable
-            position = 0;
-            update_valuation();
-            document.getElementById('pos_display').innerHTML = position;
-            document.getElementById('cash_display').innerHTML = format_cash(cash + instrument_cash);
+        clear_trades()
 
-            ldr.cleanup();
-        })
-        .route('error', function(error) {
-            alertify.alert(error.value.content)
-        })
-        .route('force_quoter_on', function() {
-            qr.toggle()
-        })
-    )
+        ldr.build(
+            op.tick_table.bottom_price,
+            op.tick_table.tick_size,
+            op.tick_table.top_price);
+        
+        theo.set(0.5 * (op.tick_table.bottom_price + op.tick_table.top_price));
+        is_market_open.set(true);
+
+        qr.setup();
+        
+        document.getElementById('description_display').innerHTML = op.description;
+    })
+
+    instrument_subscription.route('close').receive(function(close) {
+        is_market_open.set(false);
+        theo.set(0);
+        document.getElementById('description_display').innerHTML = '<font color=\'grey\'>[Closed]</font>';
+
+        cash += instrument_cash;
+        instrument_cash = 0;
+
+        cash += position * close.value; // TODO: cash is an observable
+        position = 0;
+        update_valuation();
+        document.getElementById('pos_display').innerHTML = position;
+        document.getElementById('cash_display').innerHTML = format_cash(cash + instrument_cash);
+
+        ldr.cleanup();
+    })
+
+    instrument_subscription.route('error').receive(function(error) {
+        alertify.alert(error.value)
+    })
+
+    instrument_subscription.route('force_quoter_on').receive(function() {
+        qr.toggle()
+    })
 }
 
 function register()
@@ -1170,38 +1121,28 @@ function register()
     
     var uname = document.getElementById('username_input').value;
 
-    sock.send({
-        route: 'clue_request',
-        content: {
-            uname: uname
-        }
-    }).receive(function(clue) {
+    sock.route('clue_request').send(uname).receive(function(clue) {
         var rego_key_field = document.getElementById('register_registration_key_input');
         var next_clue = rand_hex();
         
-        sock.send({
-            route: 'registration_request',
-            content: {
-                double_hash: hex_sha256(rego_key_field.value + clue.value),
-                next_clue: next_clue,
-                next_double_hash: hex_sha256(hex_sha256(next_clue + document.getElementById('register_password_input').value))
-            }
-        }).receive(sockception.util.router()
-            .transform(function(value) {
-                return value.route
-            })
-            .route('success', handle_login)
-            .route('failure', function() {
-                rego_key_field.value = 'failure'
+        var registration_request = sock.route('registration_request').send({
+            double_hash: hex_sha256(rego_key_field.value + clue.value),
+            next_clue: next_clue,
+            next_double_hash: hex_sha256(hex_sha256(next_clue + document.getElementById('register_password_input').value))
+        })
 
-                setTimeout(
-                    function()
-                    {
-                        rego_key_field.value = '';
-                    },
-                    500); // TODO: config
-            })
-        )
+        registration_request.route('success').receive(handle_login)
+
+        registration_request.route('failure').receive(function() {
+            rego_key_field.value = 'failure'
+
+            setTimeout(
+                function()
+                {
+                    rego_key_field.value = '';
+                },
+                500); // TODO: config
+        })
     })
 }
 

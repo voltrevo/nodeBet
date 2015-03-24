@@ -1,6 +1,7 @@
 "use strict"
 
 // TODO: logging
+// TODO: quotes not amending when theo changes
 
 var clamp
 var config

@@ -12,12 +12,8 @@ exports.instrument_manager = function(args)
     
     this.handle_price_update = function(pu)
     {
-        for (var uname in self.subscriptions)
-        {
-            self.subscriptions[uname].send({
-                route: 'price_update',
-                content: pu
-            })
+        for (var uname in self.subscriptions) {
+            self.subscriptions[uname].route('price_update').send(pu)
         }
     }
     
@@ -46,7 +42,7 @@ exports.instrument_manager = function(args)
             return
         }
 
-        var oi = order_insert.value.content
+        var oi = order_insert.value
         
         if (!self.instrument.check_price(oi.price)) {
             err.send('Price invalid')
@@ -134,42 +130,30 @@ exports.instrument_manager = function(args)
         self.oncancels[user.uname] = function() { sub.close() }
         
         if (self.user_positions[user.uname]) {
-            sub.send({
-                route: 'position_update',
-                content: self.user_positions[user.uname]
-            })
+            sub.route('position_update').send(self.user_positions[user.uname])
         } else {
-            sub.send({
-                route: 'position_update',
-                content: {
-                    cash: 0,
-                    instrument: 0
-                }
+            sub.route('position_update').send({
+                cash: 0,
+                instrument: 0
             })
         }
         
-        sub.send({
-            route: 'status',
-            content: ( // TODO: really have to figure out this route + content vs route + fields thing
-                self.instrument === null ? {
-                    instrument_status: self.get_status(),
-                    description: '',
-                    tick_table: null
-                } : {
-                    instrument_status: self.get_status(),
-                    description: self.instrument.description,
-                    tick_table: self.instrument_params.tick_table
-                }
-            )
-        })
+        sub.route('status').send(
+            self.instrument === null ? {
+                instrument_status: self.get_status(),
+                description: '',
+                tick_table: null
+            } : {
+                instrument_status: self.get_status(),
+                description: self.instrument.description,
+                tick_table: self.instrument_params.tick_table
+            }
+        )
         
         if (self.instrument)
         {
             self.instrument.get_all_prices(function(pu) {
-                sub.send({
-                    route: 'price_update',
-                    content: pu
-                })
+                sub.route('price_update').send(pu)
             });
         }
         
@@ -191,13 +175,10 @@ exports.instrument_manager = function(args)
         
         for (var uname in self.subscriptions)
         {
-            self.subscriptions[uname].send({
-                route: 'open',
-                content: {
-                    description: description,
-                    tick_table: tick_table
-                }
-            });
+            self.subscriptions[uname].route('open').send({
+                description: description,
+                tick_table: tick_table
+            })
         }
     }
     
@@ -206,16 +187,11 @@ exports.instrument_manager = function(args)
         assert(self.instrument.instrument_status !== 'closed');
         self.instrument.instrument_status = 'closed';
         
-        for (var uname in self.subscriptions)
-        {
-            self.subscriptions[uname].send({
-                route: 'close',
-                content: value
-            })
+        for (var uname in self.subscriptions) {
+            self.subscriptions[uname].route('close').send(value)
         }
         
-        for (var tag in self.orders)
-        {
+        for (var tag in self.orders) {
             self.orders[tag].pull();
         }
 
@@ -226,9 +202,8 @@ exports.instrument_manager = function(args)
 
     this.force_quoters_on = function()
     {
-        for (var uname in self.subscriptions)
-        {
-            self.subscriptions[uname].send({route: 'force_quoter_on'})
+        for (var uname in self.subscriptions) {
+            self.subscriptions[uname].route('force_quoter_on').send()
         }
     }
 }
