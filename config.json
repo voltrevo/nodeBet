@@ -1,0 +1,25 @@
+{
+    "loggers": [
+        {
+            "transport": "DailyRotateFile",
+            "options": {
+                "level": "debug",
+                "filename": "exchange.log",
+                "tailable": true,
+                "handleExceptions": true,
+                "json": false,
+                "timeFormat": "YYYY-MM-DD HH:mm:ss.SSS Z"
+            }
+        }
+    ],
+    "exchange":
+    {
+        "port": 21354,
+        "registration":
+        {
+            "secret": "2b85e613f31d0dfa35d09b9d1fdb38882df6e5da679d4dbf1e40569239a43565",
+            "initial_cash": 100
+        },
+        "users_file": "users.json"
+    }
+}

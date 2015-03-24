@@ -1,0 +1,26 @@
+{
+  "name": "nodeBet",
+  "version": "0.0.1",
+  "description": "A web-based betting/trading platform",
+  "main": "exchange.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "node",
+    "bet",
+    "trading",
+    "exchange"
+  ],
+  "author": "Andrew Morris",
+  "license": "MIT",
+  "dependencies": {
+    "configure": "git://github.com/voltrevo/node-configure",
+    "moment": "^2.9.0",
+    "sockception": "git://github.com/voltrevo/sockception",
+    "winston": "^0.9.0"
+  }
+}

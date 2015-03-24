@@ -1,0 +1,1459 @@
+<html>
+<head>
+<title>Node Bet</title>
+
+<link rel="favicon reloader" href="/favicon.ico?v=2" />
+
+<style>
+.no_select
+{
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+body
+{
+    background-image: url('images/carbon_fibre_tile.png')
+}
+
+table
+{
+    border-top: 1px solid black;
+    border-left: 1px solid black
+}
+
+td
+{
+    border-right: 1px solid black;
+    border-bottom: 1px solid black;
+    background-color: white;
+    padding: 7px;
+}
+
+th
+{
+    border-right: 1px solid black;
+    border-bottom: 1px solid black;
+    background-color: #5da1a3;
+    font-weight: normal;
+    padding: 10px;
+}
+
+.no_bg
+{
+    background-color: transparent;
+    background-image: none;
+}
+
+</style>
+
+<link rel="stylesheet" href="css/alertify.core.css"/>
+<link rel="stylesheet" href="css/alertify.default.css"/>
+
+<script src='js/alertify.js'></script>
+
+<script>
+'use strict';
+var exports = {};
+//function require() { return exports; }
+</script>
+
+<script src='js/sha2.js'></script>
+<script src='js/dbl.js'></script>
+<script src='js/moment.js'></script>
+<script src='js/timestamp.js'></script>
+<script src='js/config.js'></script>
+<script src='js/logger.js'></script>
+<script src='js/utils.js'></script>
+<script src='js/type_check.js'></script>
+<!-- <script src='js/peer.js'></script> -->
+<script src='js/quoter.js'></script>
+<script src='js/web_utils.js'></script>
+<script src='js/observable.js'></script>
+<script src='js/sockception/index.js'></script>
+<script src='js/sockception/util.js'></script>
+
+<script>
+
+'use strict';
+
+// TODO: Non-chrome testing
+// TODO: wtf is all this code doing inside index.html? tsk tsk...
+
+var alertify
+var config
+var dbl
+var hex_sha256
+var observable
+var sockception
+var utils // TODO: misnaming: this comes from util.js
+
+var once = sockception.util.once
+
+// TODO: fix global area pollution
+var app = {};
+app.log = new exports.logger('debug');
+var log = app.log;
+
+var rand_hex = exports.rand_hex;
+var clamp = exports.clamp;
+var type_check = exports.type_check;
+
+var username;
+var chat = null
+
+var trade_elements = [];
+
+// TODO: fix magic numbers
+var theo = new (function()
+{
+    var self = this;
+
+    this.observable_value = new observable(0);
+
+    this.set = this.observable_value.set;
+    this.get = this.observable_value.get;
+    this.listen = this.observable_value.listen;
+
+    this.change = function(dt)
+    {
+        if (ldr.bottom_price !== null && ldr.top_price !== null)
+        {
+            var new_value = clamp(ldr.bottom_price, self.get() + dt, ldr.top_price);
+            self.set(new_value);
+        }
+    }
+})
+
+var key_handlers = [];
+
+var is_market_open = new observable(false);
+
+var sock = null;
+
+var position = 0;
+var cash = 0;
+var instrument_cash = 0;
+
+var orders = {};
+
+var lot_sizes = [1, 2, 5, 10, 20, 50, 100, 200];
+var lot_index = 0;
+
+function bind_hotkeys() // TODO: use jwerty or similar
+{
+    // d
+    key_handlers[68] = function() { mass_delete(); }
+    
+    // Left
+    key_handlers[37] = function() { if (is_market_open.get()) qr.change_offset(-ldr.tick_size); }
+
+    // Up
+    key_handlers[38] = function() { if (is_market_open.get()) theo.change(ldr.tick_size); }
+
+    // Right
+    key_handlers[39] = function() { if (is_market_open.get()) qr.change_offset(ldr.tick_size); }
+
+    // Down
+    key_handlers[40] = function() { if (is_market_open.get()) theo.change(-ldr.tick_size); }
+
+    // q
+    key_handlers[81] = function() { if (is_market_open.get()) qr.toggle(); }
+    
+    // r
+    key_handlers[82] = function() { if (is_market_open.get()) qr.refresh(); }
+    
+    // a
+    key_handlers[65] = function() { qr.change_size(1); }
+    
+    // z
+    key_handlers[90] = function() { qr.change_size(-1); }
+    
+    // s
+    key_handlers[83] = function() { increase_lot_size(); }
+    
+    // x
+    key_handlers[88] = function() { decrease_lot_size(); }
+    
+    // h
+    key_handlers[72] = function() { show_hotkeys(); }
+}
+
+function unbind_hotkeys()
+{
+    key_handlers = [];
+}
+
+function format_cash(x)
+{
+    if (dbl.equal(x, 0))
+    {
+        x = 0; // Avoids -0.00
+    }
+    
+    return '$' + x.toFixed(2);
+}
+
+function get_selector_value(id)
+{
+    var selector = document.getElementById(id);
+    return selector.options[selector.selectedIndex].value;
+}
+
+function remove_element(node)
+{
+    node.parentNode.removeChild(node);
+}
+
+function remove_children(node)
+{
+    while (node.firstChild)
+    {
+        node.removeChild(node.firstChild);
+    }
+}
+
+function add_message(msg)
+{
+    var msg_div = document.createElement('div');
+    msg_div.appendChild(document.createTextNode(msg));
+    msg_div.style.margin = '10px';
+    msg_div.style.wordWrap = 'break-word';
+    
+    var cc = document.getElementById('chat_display');
+    cc.appendChild(msg_div);
+    cc.scrollTop = cc.scrollHeight;
+}
+
+function add_error_message(msg)
+{
+    var msg_div = document.createElement('div');
+    msg_div.appendChild(document.createTextNode(msg));
+    msg_div.style.margin = '10px';
+    msg_div.style.wordWrap = 'break-word';
+    msg_div.style.color = 'red';
+    
+    var cc = document.getElementById('chat_display');
+    cc.appendChild(msg_div);
+    cc.scrollTop = cc.scrollHeight;
+}
+
+function show_hotkeys()
+{
+    alertify.alert(
+        'd: delete all orders<br>' +
+        's: increment click lot size<br>' +
+        'x: decrement lot size<br>' +
+        'up arrow: increment theo<br>' +
+        'down arrow: decrement theo<br>' +
+        'q: toggle quoter<br>' +
+        'left arrow: tighten quoter<br>' +
+        'right arrow: widen quoter<br>' +
+        'a: increment quoter size<br>' +
+        'z: decrement quoter size<br>' +
+        'r: refill quotes<br>' +
+        'h: show hotkeys');
+}
+
+document.onkeydown = function(e)
+{
+    if (key_handlers[e.keyCode])
+    {
+        e.preventDefault();
+        key_handlers[e.keyCode]();
+    }
+}
+
+function send_order_insert(side, price, volume, trade_cb, tag_cb)
+{
+    price = ldr.normalize_price(price);
+    
+    var order =
+    {
+        instrument_name: 'test_instrument',
+        price: price,
+        volume: volume,
+        side: side,
+        expiry: null
+    };
+    
+    var orderSock = sock.send({
+        route: 'order_insert',
+        content: order
+    })
+
+    order.sock = orderSock
+
+    order.sock.receive(sockception.util.router()
+        .transform(function(value) {
+            return value.route
+        })
+        .route('tag', function(tag) { // TODO: tags should be obsolete now
+            order.tag = tag.value;
+            orders[tag.value] = order;
+            
+            order.order_status = 'active';
+            order.web_elements.status_cell.innerHTML = 'active';
+
+            // TODO: do this better
+            if (tag_cb)
+            {
+                tag_cb();
+            }
+        })
+        .route('trade', function(tradeSock) {
+            var trade = tradeSock.value.content
+
+            position += (order.side === 'buy' ? 1 : -1) * trade.volume;
+            cash += (order.side === 'buy' ? -1 : 1) * trade.price * trade.volume;
+            
+            document.getElementById('pos_display').innerHTML = position;
+            document.getElementById('pos_display').style.backgroundColor = (order.side === 'buy' ? '#88FF88' : 'FF8888');
+            
+            // TODO: Need to clear timeout if a new pos change comes in
+            setTimeout(
+                function()
+                {
+                    document.getElementById('pos_display').style.backgroundColor = '';
+                },
+                500);
+            
+            document.getElementById('cash_display').innerHTML = format_cash(cash + instrument_cash);
+            update_valuation(); // Takes care of valuation change. TODO: Do this better.
+            
+            create_trade(
+                order.side,
+                trade.price,
+                trade.volume);
+            
+            order.volume -= trade.volume;
+            order.web_elements.volume_cell.innerHTML = order.volume;
+            
+            if (order.volume === 0)
+            {
+                order.order_status = 'fully traded';
+                order.web_elements.status_cell.innerHTML = order.order_status;
+                
+                setTimeout(
+                    function()
+                    {
+                        remove_element(order.web_elements.row);
+                        delete orders[order.tag];
+                    },
+                    500);
+            }
+            
+            if (trade_cb)
+            {
+                trade_cb();
+            }
+        })
+        .route('deleted', function() {
+            handle_order_deleted(order)
+        })
+        .route('error', function(error) {
+            order.order_status = 'rejected';
+            order.web_elements.status_cell.innerHTML = 'rejected';
+
+            alertify.error(error.value.content);
+            
+            setTimeout(
+                function()
+                {
+                    remove_element(order.web_elements.row);
+                    delete orders[order.tag];
+                },
+                500);
+        })
+    )
+
+    order.tag = null;
+    
+    create_order(order);
+    
+    return order;
+}
+
+function create_order(order)
+{
+    order.order_status = 'pending';
+    order.is_finished = function() { return (order.order_status !== 'active' && order.order_status !== 'pending'); }
+    
+    order.web_elements = {};
+    order.web_elements.row = document.createElement('tr');
+    order.web_elements.side_cell = document.createElement('td');
+    order.web_elements.price_cell = document.createElement('td');
+    order.web_elements.volume_cell = document.createElement('td');
+    order.web_elements.status_cell = document.createElement('td');
+    order.web_elements.remove_cell = document.createElement('td');
+    
+    order.web_elements.row.appendChild(order.web_elements.side_cell);
+    order.web_elements.row.appendChild(order.web_elements.price_cell);
+    order.web_elements.row.appendChild(order.web_elements.volume_cell);
+    order.web_elements.row.appendChild(order.web_elements.status_cell);
+    order.web_elements.row.appendChild(order.web_elements.remove_cell);
+    
+    order.web_elements.side_cell.innerHTML = order.side;
+    order.web_elements.price_cell.innerHTML = dbl.to_string(order.price);
+    order.web_elements.volume_cell.innerHTML = order.volume;
+    order.web_elements.status_cell.innerHTML = order.order_status;
+    order.web_elements.remove_cell.innerHTML = 'x';
+    
+    order.web_elements.remove_cell.onclick = function()
+    {
+        if (order.tag)
+        {
+            send_delete(order.tag, false);
+        }
+        else
+        {
+            alertify.error('Cannot delete order because it has not been acknowledged by the exchange');
+        }
+    }
+    
+    for (var key in order.web_elements)
+    {
+        if (key !== 'row')
+        {
+            order.web_elements[key].align = 'center';
+            order.web_elements[key].style.padding = 2;
+        }
+    }
+    
+    insert_after(document.getElementById('order_headings'), order.web_elements.row);
+}
+
+function create_trade(side, price, volume)
+{
+    price = Math.round(100 * price) / 100;
+    
+    var elements = {};
+    elements.row = document.createElement('tr');
+    elements.side_cell = document.createElement('td');
+    elements.price_cell = document.createElement('td');
+    elements.volume_cell = document.createElement('td');
+    
+    elements.row.appendChild(elements.side_cell);
+    elements.row.appendChild(elements.price_cell);
+    elements.row.appendChild(elements.volume_cell);
+    
+    elements.side_cell.innerHTML = side;
+    elements.price_cell.innerHTML = dbl.to_string(price);
+    elements.volume_cell.innerHTML = volume;
+    
+    for (var key in elements)
+    {
+        if (key !== 'row')
+        {
+            elements[key].align = 'center';
+            elements[key].style.padding = 2;
+        }
+    }
+    
+    insert_after(document.getElementById('trade_headings'), elements.row);
+
+    trade_elements.push(elements);
+}
+
+function clear_trades()
+{
+    for (var i in trade_elements)
+    {
+        remove_element(trade_elements[i].row);
+    }
+
+    trade_elements = [];
+}
+
+function send_delete(tag, from_quoter)
+{
+    var order = orders[tag];
+
+    // TODO: make better
+    if (!from_quoter)
+    {
+        if (order === qr.bid_order || order === qr.offer_order)
+        {
+            return;
+        }
+    }
+    
+    //console.log('send_delete(\'' + tag + '\')');
+    if (order && order.order_status !== 'deleting' && order.order_status !== 'deleted')
+    {
+        //console.log('actually send_delete(\'' + tag + '\'), status: ' + orders[tag].order_status);
+        
+        order.order_status = 'deleting';
+        order.web_elements.status_cell.innerHTML = 'deleting';
+        
+        order.sock.send({
+            route: 'order_delete',
+            content: {
+                tag: tag
+            }
+        }).receive(sockception.util.router()
+            .transform(function(value) {
+                return value.route
+            })
+            .route('success', function() {
+                handle_order_deleted(order)
+            })
+            .route('failure', function() {
+                console.log('Tried to delete order not found at exchange (probably traded)')
+            })
+        )
+    }
+}
+
+function handle_order_deleted(order)
+{
+    if (order.order_status === 'deleted')
+    {
+        return;
+    }
+    
+    order.order_status = 'deleted';
+    order.web_elements.status_cell.innerHTML = 'deleted';
+    
+    setTimeout(
+        function()
+        {
+            remove_element(order.web_elements.row);
+            delete orders[order.tag];
+        },
+        500);
+}
+
+function ladder(table_node)
+{
+    var self = this;
+
+    this.table_node = table_node;
+
+    this.decimal_places = null;
+
+    this.bottom_price = null;
+    this.tick_size = null;
+    this.top_price = null;
+    
+    this.bid_cells = null;
+    this.price_cells = null;
+    this.offer_cells = null;
+
+    this.description = '<font color=\'grey\'>[Closed]</font>';
+    this.description_cell = null;
+
+    this.set_description = function(description)
+    {
+        self.description = description;
+        self.description_cell.innerHTML = description;
+    }
+
+    this.build = function(bottom_price, tick_size, top_price)
+    {
+        log.debug("Building ladder")
+
+        self.cleanup();
+        self.build_header();
+
+        self.decimal_places = dbl.decimals_used(tick_size);
+
+        self.bottom_price = bottom_price;
+        self.tick_size = tick_size;
+        self.top_price = top_price;
+
+        self.bid_cells = new dbl.map();
+        self.price_cells = new dbl.map();
+        self.offer_cells = new dbl.map();
+        
+        for (var price = self.top_price; price >= self.bottom_price - 0.5 * tick_size; price -= tick_size)
+        {
+            self.build_level(price, tick_size);
+        }
+
+        self.price_cells.get(theo.get()).style.backgroundColor = '#88bbff';
+
+        theo.listen(function(theo, old_theo)
+        {
+            // TODO: assumes theo is on a tick (need nearest tick)
+            self.price_cells.get(old_theo).style.backgroundColor = '#ffffff';
+            self.price_cells.get(theo).style.backgroundColor = '#88bbff';
+        });
+    }
+
+    this.build_header = function()
+    {
+        self.table_node.innerHTML =
+        [
+            '<tr>',
+            '    <th width=210 colspan=3 align=\'center\' id=\'description_display\'></th>',
+            '</tr>',
+            '<tr>',
+            '    <td width=70 align=\'center\'>Bid</td>',
+            '    <td width=70 align=\'center\'>Price</td>',
+            '    <td width=70 align=\'center\'>Offer</td>',
+            '</tr>'
+        ].join('\n');
+
+        self.description_cell = document.getElementById('description_display');
+        self.description_cell.innerHTML = self.description;
+    }
+
+    this.build_level = function(price, tick_size)
+    {
+        if (dbl.equal(price, 0))
+        {
+            price = 0; // Avoids printing prices like "-0.00"
+        }
+        
+        var row = document.createElement('tr');
+        var bid_cell = document.createElement('td');
+        var price_cell = document.createElement('td');
+        var offer_cell = document.createElement('td');
+        
+        bid_cell.align = 'center';
+        price_cell.align = 'center';
+        offer_cell.align = 'center';
+        
+        price_cell.innerHTML = price.toFixed(self.decimal_places);
+        
+        row.appendChild(bid_cell);
+        row.appendChild(price_cell);
+        row.appendChild(offer_cell);
+        
+        self.table_node.appendChild(row);
+        
+        self.bid_cells.set(price, bid_cell);
+        self.price_cells.set(price, price_cell);
+        self.offer_cells.set(price, offer_cell);
+        
+        bid_cell.onclick = function()
+        {
+            send_order_insert('buy', price, lot_sizes[lot_index]);
+        };
+        
+        offer_cell.onclick = function()
+        {
+            send_order_insert('sell', price, lot_sizes[lot_index]);
+        }
+    }
+
+    this.normalize_price = function(price)
+    {
+        var price_str = price.toFixed(self.decimal_places);
+        return parseFloat(price_str);
+    }
+
+    this.cleanup = function()
+    {
+        self.bid_cells = null;
+        self.price_cells = null;
+        self.offer_cells = null;
+        remove_children(self.table_node);
+        self.build_header();
+    }
+
+    this.build_header();
+}
+
+var ldr = null;
+var qr = null;
+
+window.onload = function()
+{
+    ldr = new ladder(document.getElementById('ladder_table'));
+    
+    qr = new quoter();
+    
+    document.getElementById('startup_table').onkeydown = function(e)
+    {
+        if (e.keyCode == 13)
+        {
+            switch (get_selector_value('startup_selector'))
+            {
+                case 'login':
+                    login();
+                    break;
+                
+                case 'register':
+                    register();
+                    break;
+                
+                case 'change_password':
+                    change_password();
+                    break;
+            }
+        }
+    }
+    
+    document.getElementById('username_input').focus();
+    
+    qr.update_display();
+    
+    var chat_input = document.getElementById('chat_input');
+    chat_input.onkeydown = function(e)
+    {
+        if (e.keyCode === 13)
+        {
+            if (chat === null) {
+                add_error_message('Chat not connected')
+            } else {
+                chat.send(chat_input.value);
+            }
+            
+            chat_input.value = '';
+            
+            return false;
+        }
+        
+        return true;
+    }
+}
+
+function increase_lot_size()
+{
+    lot_index++;
+    if (lot_index >= lot_sizes.length)
+    {
+        lot_index = lot_sizes.length - 1;
+    }
+    
+    document.getElementById('lot_size_display').innerHTML = lot_sizes[lot_index];
+}
+
+function decrease_lot_size()
+{
+    lot_index--;
+    if (lot_index < 0)
+    {
+        lot_index = 0;
+    }
+    
+    document.getElementById('lot_size_display').innerHTML = lot_sizes[lot_index];
+}
+
+function update_valuation()
+{
+    document.getElementById('valuation_display').innerHTML = format_cash(cash + instrument_cash + theo.get() * position);
+}
+
+theo.listen(update_valuation);
+
+function mass_delete()
+{
+    //peer.get('mass_delete', null, {}); // Currently ignoring ack
+    for (var tag in orders)
+    {
+        send_delete(parseInt(tag), false);
+    }
+}
+
+function login()
+{
+    username = document.getElementById('username_input').value;
+    
+    var sock_connected_at_start = !!sock;
+
+    if (!sock)
+    {
+        sock = sockception.connect('ws://' + config.host + ':' + config.port + '/')
+
+        // TODO: don't use impl / expose this kind of thing properly
+        sock.impl.factory.log = function() {
+            var str = ""
+            for (var i = 0; i !== arguments.length; i++) {
+                if (i !== 0) {
+                    str += " "
+                }
+                str += JSON.stringify(arguments[i])
+            }
+            console.debug("sockception: " + str)
+        }
+    }
+    
+    var run = function() {
+        sock.send({
+            route: 'clue_request',
+            content: {
+                uname: username
+            }
+        }).receive(function(clue) {
+            var startup_type = get_selector_value('startup_selector');
+            
+            var passwd = document.getElementById(
+                startup_type === 'login' ?
+                'login_password_input' :
+                'change_password_old_password_input').value;
+            
+            var new_passwd = document.getElementById(
+                startup_type === 'login' ?
+                'login_password_input' :
+                'change_password_new_password_input').value;
+            
+            var hash = hex_sha256(clue.value + passwd);
+            var next_clue = rand_hex();
+            
+            sock.send({
+                route: 'login_request',
+                content: {
+                    uname: username,
+                    hash: hash,
+                    next_clue: next_clue,
+                    next_double_hash: hex_sha256(hex_sha256(next_clue + passwd))
+                }
+            }).receive(sockception.util.router()
+                .transform(function(value) {
+                    return (typeof value === "string" ? value : value.route)
+                })
+                .route('success', handle_login)
+                .route('failure', function() {
+                    var failure_element = (
+                        get_selector_value('startup_selector') === 'login' ?
+                        document.getElementById('login_password_input') :
+                        document.getElementById('change_password_old_password_input'));
+                    
+                    failure_element.value = 'login failure';
+                    failure_element.type = 'text';
+                    
+                    setTimeout(
+                        function()
+                        {
+                            failure_element.value = '';
+                            failure_element.type = 'password';
+                        },
+                        500);
+                })
+                .route('already_logged_in', function() {
+                    var failure_element = document.getElementById('username_input');
+                    failure_element.value = 'already logged in';
+                    
+                    setTimeout(
+                        function()
+                        {
+                            failure_element.value = '';
+                        },
+                        500);
+                }))
+        })
+    }
+
+    if (sock_connected_at_start) {
+        run()
+    } else {
+        sock.receive(run)
+    }
+}
+
+function handle_login(newSocket)
+{
+    sock = newSocket // TODO: oh dear, this needs to be done in a better way
+
+    switch(get_selector_value('startup_selector'))
+    {
+        case 'login':
+            document.getElementById('login_password_input').value = 'login success!';
+            document.getElementById('login_password_input').type = 'text';
+            break;
+        
+        case 'register':
+            document.getElementById('register_registration_key_input').value = 'login success!';
+            break;
+        
+        case 'change_password':
+            document.getElementById('change_password_old_password_input').value = 'login success!';
+            document.getElementById('change_password_old_password_input').type = 'text';
+            
+            document.getElementById('change_password_new_password_input').value = 'login success!';
+            document.getElementById('change_password_new_password_input').type = 'text';
+            
+            document.getElementById('change_password_confirm_new_password_input').value = 'login success!';
+            document.getElementById('change_password_confirm_new_password_input').type = 'text';
+            break;
+    }
+    
+    if (username === 'andrew.morris') // TODO: configure this lol
+    {
+        var open_instrument_button = document.createElement('input');
+        open_instrument_button.value = 'Open';
+        open_instrument_button.type = 'button';
+        
+        open_instrument_button.onclick = function()
+        {
+            unbind_hotkeys();
+            
+            // TODO: I need to outlaw this technique
+            alertify.prompt('Enter description', function(e, desc) {
+            alertify.prompt('Enter bottom price', function(e, bottom_price) {
+            alertify.prompt('Enter tick size', function(e, tick_size) {
+            alertify.prompt('Enter top price', function(e, top_price) {
+                
+                bind_hotkeys();
+
+                bottom_price = parseFloat(bottom_price);
+                tick_size = parseFloat(tick_size);
+                top_price = parseFloat(top_price);
+                
+                sock.send({
+                    route: 'open_instrument',
+                    content: {
+                        instrument_name: 'test_instrument',
+                        description: desc,
+                        tick_table:
+                        {
+                            bottom_price: bottom_price,
+                            tick_size: tick_size,
+                            top_price: top_price
+                        }
+                    }
+                }).receive(once(sockception.util.router()
+                    .transform(function(value) {
+                        return value.route
+                    })
+                    .route('error', function(s) {
+                        alertify.error(s.value.content)
+                    })
+                    .route('success', function() {
+                        // TODO: should something go here?
+                    })
+                )) // TODO: not sure how I feel about putting this on this line... make this uniform
+                
+            })})})});
+        }
+        
+        document.getElementById('admin_display').appendChild(open_instrument_button);
+        
+        var close_instrument_button = document.createElement('input');
+        close_instrument_button.value = 'Close';
+        close_instrument_button.type = 'button';
+        
+        close_instrument_button.onclick = function()
+        {
+            unbind_hotkeys();
+            
+            alertify.prompt(
+                'Enter settlement price',
+                function(e, price)
+                {
+                    bind_hotkeys();
+                    
+                    sock.send({
+                        route: 'close_instrument',
+                        content: {
+                            instrument_name: 'test_instrument',
+                            value: parseFloat(price)
+                        }
+                    }).receive(once(sockception.util.router()
+                        .route('error', function(err) {
+                            alertify.error(err.value.content)
+                        })
+                        .route('success', function() {
+                            // TODO: do something here?
+                        })
+                    ))
+                });
+        }
+        
+        document.getElementById('admin_display').appendChild(close_instrument_button);
+        
+        var rego_key_button = document.createElement('input');
+        rego_key_button.value = 'Request Registration Key';
+        rego_key_button.type = 'button';
+        
+        rego_key_button.onclick = function() {
+            sock.send({
+                route: 'clue_request',
+                content: {
+                    uname: username
+                }
+            }).receive(function(clue) {
+                unbind_hotkeys()
+
+                alertify.prompt('Password', function(e, passwd) {
+                alertify.prompt('New username', function(e, new_user) {
+                    bind_hotkeys()
+
+                    var next_clue = utils.rand_hex();
+                    
+                    sock.send({
+                        route: 'registration_key_request',
+                        content: {
+                            hash: hex_sha256(clue + passwd),
+                            next_clue: next_clue,
+                            next_double_hash: hex_sha256(hex_sha256(next_clue + passwd)),
+                            new_user: new_user
+                        }
+                    }).receive(once(sockception.util.router()
+                        .transform(function(value) {
+                            return value.route
+                        })
+                        .route('registration_key', function(key) {
+                            alertify.alert(key.value.content)
+                        })
+                        .route('failure', function() {
+                            alertify.error('Wrong password')
+                        })
+                    ))
+                })})
+            })
+        }
+        
+        document.getElementById('admin_display').appendChild(rego_key_button);
+
+        var force_quoters_button = document.createElement('input');
+        force_quoters_button.value = 'Turn Quoters On';
+        force_quoters_button.type = 'button';
+
+        force_quoters_button.onclick = function() {
+            sock.send({
+                route: 'force_quoters_on',
+                content: {
+                    instrument_name: 'test_instrument'
+                }
+            })
+        };
+        
+        document.getElementById('admin_display').appendChild(force_quoters_button);
+        document.getElementById('admin_display').appendChild(document.createElement('br'));
+    }
+    
+    setTimeout(
+        function()
+        {
+            bind_hotkeys();
+            
+            // TODO: (Random thought) What does the server do if you insert a 0.5 lot?
+            
+            remove_element(document.getElementById('startup_table'));
+            document.getElementById('inner_layout_table').style.visibility = 'visible';
+
+            create_login_requests();
+        },
+        500);
+    
+    setInterval(
+        function() {
+            var send_time = new Date();
+            sock.send({
+                route: 'ping'
+            }).receive(once(function() {
+                log.info('Ping time: ' + (new Date() - send_time) + 'ms');
+            }))
+        },
+        10000)
+}
+
+function create_login_requests()
+{
+    sock.send({
+        route: 'cash'
+    }).receive(once(function(cash_update) {
+        cash = cash_update.value
+        document.getElementById('cash_display').innerHTML = format_cash(cash + instrument_cash)
+        update_valuation()
+    }))
+
+    chat = sock.send({
+        route: 'chat'
+    })
+
+    chat.receive(function(msgInfo) {
+        add_message(msgInfo.value.uname + ': ' + msgInfo.value.msg)
+    })
+
+    sock.send({
+        route: 'instrument_subscription',
+        content: {
+            instrument_name: 'test_instrument'
+        }
+    }).receive(sockception.util.router()
+        .transform(function(value) {
+            return value.route
+        })
+        .route('position_update', function(position_update) {
+            instrument_cash = position_update.value.content.cash;
+            document.getElementById('cash_display').innerHTML = format_cash(cash + instrument_cash);
+            
+            position = position_update.value.content.instrument;
+            document.getElementById('pos_display').innerHTML = position;
+            
+            update_valuation();
+        })
+        .route('price_update', function(price_update) {
+            var pu = price_update.value.content
+
+            if (pu.volume > 0)
+            {
+                ldr.bid_cells.get(pu.price).innerHTML = pu.volume;
+            }
+            else if (pu.volume < 0)
+            {
+                ldr.offer_cells.get(pu.price).innerHTML = -pu.volume;
+            }
+            else
+            {
+                ldr.bid_cells.get(pu.price).innerHTML = '';
+                ldr.offer_cells.get(pu.price).innerHTML = '';
+            }
+        })
+        .route('status', function(status) {
+            var is = status.value.content
+
+            if (is.instrument_status === 'open')
+            {
+                var ret = type_check(
+                    {
+                        bottom_price: 'number',
+                        tick_size: 'number',
+                        top_price: 'number'
+                    },
+                    is.tick_table)
+                
+                if (!ret.result)
+                {
+                    log.error('Tick table type check failed: ' + ret.detail);
+                    return;
+                }
+            }
+            
+            var is_market_open_before = is_market_open.get();
+            is_market_open.set(is.instrument_status === 'open');
+
+            if (!is_market_open_before && is_market_open.get())
+            {
+                ldr.build(
+                    is.tick_table.bottom_price,
+                    is.tick_table.tick_size,
+                    is.tick_table.top_price);
+                
+                qr.setup();
+                
+                document.getElementById('description_display').innerHTML = is.description;
+            }
+        })
+        .route('open', function(open) {
+            var op = open.value.content
+
+            clear_trades()
+
+            ldr.build(
+                op.tick_table.bottom_price,
+                op.tick_table.tick_size,
+                op.tick_table.top_price);
+            
+            theo.set(0.5 * (op.tick_table.bottom_price + op.tick_table.top_price));
+            is_market_open.set(true);
+
+            qr.setup();
+            
+            document.getElementById('description_display').innerHTML = op.description;
+        })
+        .route('close', function(close) {
+            is_market_open.set(false);
+            theo.set(0);
+            document.getElementById('description_display').innerHTML = '<font color=\'grey\'>[Closed]</font>';
+
+            cash += instrument_cash;
+            instrument_cash = 0;
+
+            cash += position * close.value.content; // TODO: cash is an observable
+            position = 0;
+            update_valuation();
+            document.getElementById('pos_display').innerHTML = position;
+            document.getElementById('cash_display').innerHTML = format_cash(cash + instrument_cash);
+
+            ldr.cleanup();
+        })
+        .route('error', function(error) {
+            alertify.alert(error.value.content)
+        })
+        .route('force_quoter_on', function() {
+            qr.toggle()
+        })
+    )
+}
+
+function register()
+{
+    var confirm_field = document.getElementById('register_confirm_password_input');
+    
+    if (
+        document.getElementById('register_password_input').value !==
+        confirm_field.value)
+    {
+        confirm_field.value = 'doesn\'t match';
+        confirm_field.type = 'text';
+        
+        setTimeout(
+            function()
+            {
+                confirm_field.value = '';
+                confirm_field.type = 'password';
+            },
+            500);
+        
+        return;
+    }
+    
+    var uname = document.getElementById('username_input').value;
+
+    sock.send({
+        route: 'clue_request',
+        content: {
+            uname: uname
+        }
+    }).receive(function(clue) {
+        var rego_key_field = document.getElementById('register_registration_key_input');
+        var next_clue = rand_hex();
+        
+        sock.send({
+            route: 'registration_request',
+            content: {
+                double_hash: hex_sha256(rego_key_field.value + clue.value),
+                next_clue: next_clue,
+                next_double_hash: hex_sha256(hex_sha256(next_clue + document.getElementById('register_password_input').value))
+            }
+        }).receive(sockception.util.router()
+            .transform(function(value) {
+                return value.route
+            })
+            .route('success', handle_login)
+            .route('failure', function() {
+                rego_key_field.value = 'failure'
+
+                setTimeout(
+                    function()
+                    {
+                        rego_key_field.value = '';
+                    },
+                    500); // TODO: config
+            })
+        )
+    })
+}
+
+function change_password()
+{
+    var new_password_input = document.getElementById('change_password_new_password_input');
+    var confirm_new_password_input = document.getElementById('change_password_confirm_new_password_input');
+    
+    if (new_password_input.value !== confirm_new_password_input.value)
+    {
+        confirm_new_password_input.value = 'doesn\'t match';
+        confirm_new_password_input.type = 'text';
+        
+        setTimeout(
+            function()
+            {
+                confirm_new_password_input.value = '';
+                confirm_new_password_input.type = 'password';
+            },
+            500);
+        
+        return;
+    }
+    
+    login();
+}
+
+function update_startup_table()
+{
+    var row_ids =
+    {
+        login: ['login_row_1'],
+        register: ['register_row_1', 'register_row_2', 'register_row_3'],
+        change_password: ['change_password_row_1', 'change_password_row_2', 'change_password_row_3']
+    };
+    
+    for (var display_type in row_ids)
+    {
+        var display_value = (display_type === get_selector_value('startup_selector') ? '' : 'none');
+        
+        for (var i in row_ids[display_type])
+        {
+            document.getElementById(row_ids[display_type][i]).style.display = display_value;
+        }
+    }
+}
+
+</script>
+
+</head>
+<body style='font-family:consolas,courier new;margin:0' class='no_select'>
+
+<a href='/'><img style='position:absolute;top:50;left:50%;margin-top:-35px;margin-left:-35px;width:70px;height:70px;' src='images/logo.png'/></a>
+
+<table cellspacing=0 id='main_table' width='100%'>
+
+<tr><td style='background-color:#16383f;height:50px;border-bottom:none;'></td></tr>
+<tr><td style='background-color:#dcedf0;height:10px;padding:0px;'></td></tr>
+<tr><td style='height:25px;border-bottom:none' class='no_bg'></td></tr>
+
+<tr><td class='no_bg'>
+
+<table style='border:none' align='center' id='startup_table'><tr><td style='border:none;background-color:transparent'><table cellspacing=0 align='center'>
+    <tr>
+        <th colspan=2 align='center'>
+            <select id='startup_selector' style='font-size:16px' onchange='update_startup_table();'>
+                <option value='login'>Login</option>
+                <option value='register'>Register</option>
+                <option value='change_password'>Change Password</option>
+            </select>
+        </th>
+    </tr>
+    <tr>
+        <td>Username</td>
+        <td><input type='text' id='username_input'/></td>
+    </tr>
+    <!-- Login -->
+    <tr id='login_row_1'>
+        <td>Password</td>
+        <td><input type='password' id='login_password_input'/></td>
+    </tr>
+    <!-- Register -->
+    <tr id='register_row_1' style='display:none'>
+        <td>Registration Key</td>
+        <td><input type='text' id='register_registration_key_input'/></td>
+    </tr>
+    <tr id='register_row_2' style='display:none'>
+        <td>Password</td>
+        <td><input type='password' id='register_password_input'/></td>
+    </tr>
+    <tr id='register_row_3' style='display:none'>
+        <td>Confirm Password</td>
+        <td><input type='password' id='register_confirm_password_input'/></td>
+    </tr>
+    <!-- Change Password -->
+    <tr id='change_password_row_1' style='display:none'>
+        <td>Old Password</td>
+        <td><input type='password' id='change_password_old_password_input'/></td>
+    </tr>
+    <tr id='change_password_row_2' style='display:none'>
+        <td>New Password</td>
+        <td><input type='password' id='change_password_new_password_input'/></td>
+    </tr>
+    <tr id='change_password_row_3' style='display:none'>
+        <td>Confirm New Password</td>
+        <td><input type='password' id='change_password_confirm_new_password_input'/></td>
+    </tr>
+</table></td></tr></table>
+
+<table align='center' cellpadding='20' width='100%' style='visibility:hidden;border:0' id='inner_layout_table'><tr><td class='no_bg' width='33%' valign='top' style='border:0'>
+
+<table align='center' cellspacing=0 id='lot_size_selector' width='100%'>
+    <tr>
+        <th colspan=3 align='center'>Position</th>
+    </tr>
+    <tr>
+        <td align='center' width='33%'>Cash</td>
+        <td align='center' width='34%'>Contracts</td>
+        <td align='center' width='33%'>Valuation</td>
+    </tr>
+    <tr>
+        <td align='center' width='33%' id='cash_display'></td>
+        <td align='center' width='34%' id='pos_display'></td>
+        <td align='center' width='33%' id='valuation_display'></td>
+    </tr>
+</table>
+<br>
+
+<div id='admin_display' align='center'></div>
+
+<br>
+
+<!-- Chat -->
+<table align='center' cellspacing=0 cellpadding=0 width='100%'>
+    <tr>
+        <th align='center' style='padding:10;'>
+            Chat 
+        </th>
+    </tr>
+    <tr>
+        <td height=300 width='100%'>
+            <div id='chat_display' style="width:100%;height:100%;overflow:auto;word-wrap:break-word;"></div> 
+        </td>
+    </tr>
+    <tr>
+        <td style='padding:0px'>
+            <textarea id='chat_input' style='width:100%;height:100%;border:0;' onfocus='unbind_hotkeys();' onblur='bind_hotkeys();'></textarea>
+        </td>
+    </tr>
+</table>
+
+</td><td class='no_bg' width='34%' valign='top' style='border:0'>
+
+<table align='center' cellspacing=0 id='ladder_table' frame='box' rules='all'>
+</table>
+
+</td><td class='no_bg' width='33%' valign='top' style='border:0'>
+
+<table align='center' cellspacing=0 id='lot_size_selector' style='width:100%'>
+    <tr>
+        <th colspan=3 align='center'>Lot Size</th>
+    </tr>
+    <tr>
+        <td width='33%' align='center' onclick='decrease_lot_size()'>-</td>
+        <td width='34%' align='center' id='lot_size_display'>1</td>
+        <td width='33%' align='center' onclick='increase_lot_size()' unselectable='on'>+</td>
+    </tr>
+</table>
+
+<br>
+
+<table align='center' cellspacing=0 id='quoter_table' style='width:100%'>
+    <tr>
+        <th colspan=3 align='center'>Quoter</th>
+    </tr>
+    <tr>
+        <td width='33%' align='center'>On</td>
+        <td width='34%' align='center'>Offset</td>
+        <td width='33%' align='center'>Size</td>
+    </tr>
+    <tr>
+        <td align='center' id='quoter_on_display'></td>
+        <td align='center' id='quoter_offset_display'></td>
+        <td align='center' id='quoter_size_display'></td>
+    </tr>
+</table>
+
+<br>
+
+<div style='width:100%;height:300;overflow:auto;background-color:white;'>
+    <table align='center' cellspacing=0 id='order_table' width='100%'>
+        <tr>
+            <th colspan=5 align='center'>Orders</th>
+        </tr>
+        <tr id='order_headings'>
+            <td align='center' width='15%'>Side</td>
+            <td align='center' width='17%'>Price</td>
+            <td align='center' width='20%'>Volume</td>
+            <td align='center' width='37%'>Status</td>
+            <td align='center' width='11%' onclick='mass_delete();'>x</td>
+        </tr>
+    </table>
+</div>
+
+<br>
+
+<div style='width:100%;height:300;overflow:auto;background-color:white;'>
+    <table align='center' cellspacing=0 id='trade_table' width='100%'>
+        <tr>
+            <th colspan=5 align='center'>Trades</th>
+        </tr>
+        <tr id='trade_headings'>
+            <td align='center' width='33%'>Side</td>
+            <td align='center' width='34%'>Price</td>
+            <td align='center' width='33%'>Volume</td>
+        </tr>
+    </table>
+</div>
+
+</td></tr></table>
+
+</td></tr></table>
+
+</body>
+</html>
