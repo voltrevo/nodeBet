@@ -1,22 +1,21 @@
-function observable(value)
-{
-    var self = this;
-    
-    this.value = value;
-    this.listeners = [];
+"use strict"
 
-    this.get = function() { return self.value; }
+function observable(value) {
+    var self = this
     
-    this.set = function(new_value)
-    {
-        var old_value = self.value;
-        self.value = new_value;
+    this.value = value
+    this.listeners = []
 
-        for (var i in self.listeners)
-        {
-            self.listeners[i](self.value, old_value);
+    this.get = function() { return self.value }
+    
+    this.set = function(newValue) {
+        var oldValue = self.value
+        self.value = newValue
+
+        for (var i in self.listeners) {
+            self.listeners[i](self.value, oldValue)
         }
     }
 
-    this.listen = function(listener) { self.listeners.push(listener); }
+    this.listen = function(listener) { self.listeners.push(listener) }
 }

@@ -1,4 +1,4 @@
-"use strict";
+"use strict"
 
 var config = require("configure")
 var moment = require("moment")
@@ -25,19 +25,13 @@ config.loggers.forEach(function(logger) {
     log.add(log.transports[logger.transport], logger.options)
 })
 
-process.on(
-    'SIGINT',                                                                                                                                      
-    function()
-    {
-        throw new Error("Caught interrupt signal (SIGINT)")
-    })
+process.on('SIGINT', function() {
+    throw new Error("Caught interrupt signal (SIGINT)")
+})
 
-process.on(
-    'SIGTERM',                                                                                                                                      
-    function()
-    {
-        throw new Error("Caught interrupt signal (SIGTERM)")
-    })
+process.on('SIGTERM', function() {
+    throw new Error("Caught interrupt signal (SIGTERM)")
+})
 
 log.info("Winston logging initialized")
 log.info("Application config: " + JSON.stringify(config, null, 4))

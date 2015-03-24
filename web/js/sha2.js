@@ -142,3 +142,5 @@ function binb2b64 (binarray) {
 function hex_sha256(s){return binb2hex(core_sha256(str2binb(s),s.length * chrsz));}
 function b64_sha256(s){return binb2b64(core_sha256(str2binb(s),s.length * chrsz));}
 function str_sha256(s){return binb2str(core_sha256(str2binb(s),s.length * chrsz));}
+
+var hexSha256 = hex_sha256

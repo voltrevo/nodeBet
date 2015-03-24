@@ -1,61 +1,57 @@
-'use strict';
+"use strict"
 
 // TODO: More logging
 
-var fs = require('fs');
+var fs = require("fs")
 
 var config = require("configure")
 var log = require("./winstonWrapper")
 
-var instrument_manager = require('./instrument_manager').instrument_manager;
-var assert = require('assert');
-var hex_sha256 = require('./sha2').hex_sha256;
-var utils = require('./web/js/utils');
+var instrumentManager = require("./instrumentManager").instrumentManager
+var assert = require("assert")
+var hexSha256 = require("./sha2").hexSha256
+var utils = require("./web/js/utils")
 var sockception = require("sockception")
 var util = require("util")
 
-exports.exchange = new (function()
-{
-    var self = this;
+exports.exchange = new (function() {
+    var self = this
 
-    this.config = config.exchange;
+    this.config = config.exchange
     
-    this.wss = sockception.listen({port: self.config.port});
+    this.wss = sockception.listen({port: self.config.port})
 
-    this.users_db = JSON.parse(fs.readFileSync(self.config.users_file));
+    this.usersDb = JSON.parse(fs.readFileSync(self.config.usersFile))
     
-    this.write_users_db = function()
-    {
-        fs.writeFileSync(self.config.users_file, JSON.stringify(self.users_db));
+    this.writeUsersDb = function() {
+        fs.writeFileSync(self.config.usersFile, JSON.stringify(self.usersDb))
     }
     
-    this.users = {};
-    this.chat_subscriptions = {};
+    this.users = {}
+    this.chatSubscriptions = {}
     
-    this.create_tag = (function() {
+    this.createTag = (function() {
         var count = 0
         return function() {
             return count++
         }
     })()
     
-    this.instruments =
-    {
-        test_instrument: new instrument_manager(
+    this.instruments = {
+        testInstrument: new instrumentManager({
+            instrumentParams:
             {
-                instrument_params:
-                {
-                    name: 'test_instrument',
-                },
-                admin_uname: 'andrew.morris',
-                create_tag: self.create_tag
-            }) // TODO: trade ticks
-    };
+                name: "testInstrument",
+            },
+            adminUname: "andrew.morris",
+            createTag: self.createTag
+        }) // TODO: trade ticks
+    }
     
     this.wss.receive(function(client) {
-        log.info('New client');
+        log.info("New client")
 
-        // TODO: don't use impl / expose this kind of thing properly
+        // TODO: don"t use impl / expose this kind of thing properly
         client.impl.factory.log = function() {
             var str = ""
             for (var i = 0; i !== arguments.length; i++) {
@@ -67,300 +63,296 @@ exports.exchange = new (function()
             log.debug("sockception: " + str)
         }
         
-        client.send('connected');
+        client.send("connected")
         
-        var reg_state = {uname: null, clue: null};
+        var regState = {
+            uname: null,
+            clue: null
+        }
         
-        var clue_request_handler = function(clue_request) {
-            var db_user = self.users_db[clue_request.value];
+        var clueRequestHandler = function(clueRequest) {
+            var dbUser = self.usersDb[clueRequest.value]
             
-            if (db_user)
-            {
-                log.info(clue_request.value + ' is trying to log in');
-
-                clue_request.send(db_user.clue)
-            }
-            else
-            {
-                log.info(clue_request.value + ' is trying to register');
-                reg_state.uname = clue_request.value;
-                reg_state.clue = utils.rand_hex();
-                clue_request.send(reg_state.clue)
+            if (dbUser) {
+                log.info(clueRequest.value + " is trying to log in")
+                clueRequest.send(dbUser.clue)
+            } else {
+                log.info(clueRequest.value + " is trying to register")
+                regState.uname = clueRequest.value
+                regState.clue = utils.randHex()
+                clueRequest.send(regState.clue)
             }
         }
 
-        client.route('clue_request').receive(clue_request_handler);
+        client.route("clueRequest").receive(clueRequestHandler)
         
-        client.route('login_request').receive(function(login_request) {
-            var db_user = self.users_db[login_request.value.uname];
+        client.route("loginRequest").receive(function(loginRequest) {
+            var dbUser = self.usersDb[loginRequest.value.uname]
             
-            if (!db_user)
-            {
-                log.debug("User " + login_request.value.uname + " not found. Available users: " + JSON.stringify(Object.keys(self.users_db)))
-                login_request.route('failure').send();
-                return;
-            }
-            
-            log.debug('hash received: ' + login_request.value.hash);
-            log.debug('hash(hash received): ' + hex_sha256(login_request.value.hash));
-            log.debug('double_hash: ' + login_request.value.double_hash);
+            if (!dbUser) {
+                log.debug(
+                    "User " +
+                    loginRequest.value.uname +
+                    " not found. Available users: " +
+                    JSON.stringify(Object.keys(self.usersDb)))
 
-            if (db_user.double_hash !== hex_sha256(login_request.value.hash))
-            {
-                login_request.route('failure').send();
-                return;
+                loginRequest.route("failure").send()
+
+                return
             }
             
-            db_user.clue = login_request.value.next_clue;
-            db_user.double_hash = login_request.value.next_double_hash;
+            log.debug("hash received: " + loginRequest.value.hash)
+            log.debug("hash(hash received): " + hexSha256(loginRequest.value.hash))
+            log.debug("doubleHash: " + dbUser.doubleHash)
+
+            if (dbUser.doubleHash !== hexSha256(loginRequest.value.hash)) {
+                loginRequest.route("failure").send()
+                return
+            }
             
-            self.write_users_db();
+            dbUser.clue = loginRequest.value.nextClue
+            dbUser.doubleHash = loginRequest.value.nextDoubleHash
             
-            if (self.users[login_request.value.uname])
+            self.writeUsersDb()
+            
+            if (self.users[loginRequest.value.uname])
             {
-                login_request.route('already_logged_in').send()
-                return;
+                loginRequest.route("alreadyLoggedIn").send()
+                return
             }
 
-            /* TODO: sockception doesn't know about closing
+            /* TODO: sockception doesn"t know about closing
             client.close() // Note this only closes this socket, not the full/outer socket, so long as other subsockets are open
             */
 
-            var loggedInSock = login_request.route('success').send()
-            loggedInSock.route('clue_request').receive(clue_request_handler)
+            var loggedInSock = loginRequest.route("success").send()
+            loggedInSock.route("clueRequest").receive(clueRequestHandler)
             
-            self.add_user({
-                uname: login_request.value.uname,
+            self.addUser({
+                uname: loginRequest.value.uname,
                 sock: loggedInSock
             })
         })
         
-        client.route('registration_request').receive(function(reg_req) {
-            if (self.users_db.hasOwnProperty(reg_state.uname))
-            {
-                reg_req.route('failure').send()
-                return;
+        client.route("registrationRequest").receive(function(regReq) {
+            if (self.usersDb.hasOwnProperty(regState.uname)) {
+                regReq.route("failure").send()
+                return
             }
             
-            if (reg_req.value.double_hash !== hex_sha256(hex_sha256(self.config.registration.secret + reg_state.uname) + reg_state.clue))
-            {
-                reg_req.route('failure').send()
-                return;
+            if (regReq.value.doubleHash !== hexSha256(hexSha256(self.config.registration.secret + regState.uname) + regState.clue)) {
+                regReq.route("failure").send()
+                return
             }
             
-            var db_user =
-            {
-                clue: reg_req.value.next_clue,
-                double_hash: reg_req.value.next_double_hash,
-                cash: self.config.registration.initial_cash
-            };
+            var dbUser = {
+                clue: regReq.value.nextClue,
+                doubleHash: regReq.value.nextDoubleHash,
+                cash: self.config.registration.initialCash
+            }
             
-            self.users_db[reg_state.uname] = db_user;
+            self.usersDb[regState.uname] = dbUser
             
-            self.write_users_db();
+            self.writeUsersDb()
 
-            /* TODO: sockception doesn't know about closing
+            /* TODO: sockception doesn"t know about closing
             client.close() // Note this only closes this socket, not the full/outer socket, so long as other subsockets are open
             */
 
-            var loggedInSocket = reg_req.route('success').send()
-            loggedInSocket.route('clue_request').receive(clue_request_handler)
+            var loggedInSocket = regReq.route("success").send()
+            loggedInSocket.route("clueRequest").receive(clueRequestHandler)
             
-            self.add_user({
-                uname: reg_state.uname,
+            self.addUser({
+                uname: regState.uname,
                 sock: loggedInSocket
             })
         })
-    });
+    })
     
-    this.add_user = function(user)
+    this.addUser = function(user)
     {
-        assert(self.users_db[user.uname]);
-        log.info(user.uname + ' logged in'); // TODO: uname -> name?
+        assert(self.usersDb[user.uname])
+        log.info(user.uname + " logged in"); // TODO: uname -> name?
         
-        user.db_record = self.users_db[user.uname]
+        user.dbRecord = self.usersDb[user.uname]
         user.orders = {}
         
-        self.users[user.uname] = user;
+        self.users[user.uname] = user
         
         // TODO: heartbeats
         
-        /* TODO: sockception doesn't know about closing
+        /* TODO: sockception doesn"t know about closing
         user.socket.onclose(function() {
             for (var tag in user.orders)
             {
-                user.orders[tag].pull();
+                user.orders[tag].pull()
             }
             
-            delete self.users[uname];
+            delete self.users[uname]
         })
         */
         
-        user.sock.route('chat').receive(function(chat) {
+        user.sock.route("chat").receive(function(chat) {
             // TODO: Recent messages
-            self.chat_subscriptions[user.uname] = chat; // TODO: chat_subscriptions -> chatSockets
+            self.chatSubscriptions[user.uname] = chat; // TODO: chatSubscriptions -> chatSockets
             
-            /* TODO: sockception doesn't know about closing
+            /* TODO: sockception doesn"t know about closing
             chat.onclose(function() {
-                delete self.chat_subscriptions[user.uname]
+                delete self.chatSubscriptions[user.uname]
             })
             */
 
             chat.receive(function(msg) {
-                for (var uname in self.chat_subscriptions)
+                for (var uname in self.chatSubscriptions)
                 {
-                    self.chat_subscriptions[uname].send({
+                    self.chatSubscriptions[uname].send({
                         uname: user.uname,
                         msg: msg.value
                     })
                 }
             })
-        });
+        })
         
-        user.sock.route('mass_delete').receive(function(mass_delete) {
+        user.sock.route("massDelete").receive(function(massDelete) {
             for (var tag in user.orders) {
                 user.orders[tag].pull()
             }
             
-            mass_delete.send('done')
+            massDelete.send("done")
         })
         
-        user.sock.route('registration_key_request').receive(function(rkr) {
-            if (hex_sha256(rkr.value.hash) === user.db_record.double_hash)
-            {
-                user.db_record.double_hash = rkr.value.next_double_hash;
-                user.db_record.clue = rkr.value.next_clue;
+        user.sock.route("registrationKeyRequest").receive(function(rkr) {
+            if (hexSha256(rkr.value.hash) === user.dbRecord.doubleHash) {
+                user.dbRecord.doubleHash = rkr.value.nextDoubleHash
+                user.dbRecord.clue = rkr.value.nextClue
                 
-                self.write_users_db();
+                self.writeUsersDb()
                 
-                // TODO: Not good that we're sending this in plaintext, but I think encryption is the
+                // TODO: Not good that we"re sending this in plaintext, but I think encryption is the
                 // only way around it.
-                rkr.route('registration_key').send(hex_sha256(self.config.registration.secret + rkr.value.new_user))
-            }
-            else
-            {
-                rkr.route('failure').send()
+                rkr.route("registrationKey").send(hexSha256(self.config.registration.secret + rkr.value.newUser))
+            } else {
+                rkr.route("failure").send()
             }
         })
         
-        user.sock.route('order_insert').receive(function(order_insert) {
-            var instrument = self.instruments[order_insert.value.instrument_name]
+        user.sock.route("orderInsert").receive(function(orderInsert) {
+            var instrument = self.instruments[orderInsert.value.instrumentName]
             
-            if (!instrument)
-            {
-                order_insert.route('error').send('Instrument ' + order_insert.value.instrument_name + ' not found')
+            if (!instrument) {
+                orderInsert.route("error").send("Instrument " + orderInsert.value.instrumentName + " not found")
                 return
             }
             
-            instrument.order_insert(user, order_insert)
+            instrument.orderInsert(user, orderInsert)
         })
         
-        user.sock.route('order_delete').receive(function(order_delete) {
-            var order = user.orders[order_delete.value];
+        user.sock.route("orderDelete").receive(function(orderDelete) {
+            var order = user.orders[orderDelete.value]
             
             if (order) {
-                order.pull();
-                order_delete.route('success').send()
+                order.pull()
+                orderDelete.route("success").send()
             } else {
-                order_delete.route('failure').send()
+                orderDelete.route("failure").send()
             }
         })
         
-        user.sock.route('open_instrument').receive(function(open_instrument) {
-            var instrument = self.instruments[open_instrument.value.instrument_name];
-            var err = open_instrument.route('error')
+        user.sock.route("openInstrument").receive(function(openInstrument) {
+            var instrument = self.instruments[openInstrument.value.instrumentName]
+            var err = openInstrument.route("error")
             
             if (!instrument) {
-                err.send('Instrument ' + open_instrument.value.instrument_name + ' not found')
+                err.send("Instrument " + openInstrument.value.instrumentName + " not found")
                 return
             }
             
-            if (instrument.get_status() === 'open') {
-                err.send('Instrument already open')
+            if (instrument.getStatus() === "open") {
+                err.send("Instrument already open")
                 return
             }
             
-            if (user.uname !== instrument.admin_uname) {
-                err.send('Access denied')
+            if (user.uname !== instrument.adminUname) {
+                err.send("Access denied")
                 return
             }
             
-            open_instrument.route('success').send()
+            openInstrument.route("success").send()
 
             instrument.open(
-                open_instrument.value.description,
-                open_instrument.value.tick_table)
+                openInstrument.value.description,
+                openInstrument.value.tickTable)
         })
         
-        user.sock.route('close_instrument').receive(function(close_instrument) {
-            var instrument = self.instruments[close_instrument.value.instrument_name];
-            var err = close_instrument.route('error')
+        user.sock.route("closeInstrument").receive(function(closeInstrument) {
+            var instrument = self.instruments[closeInstrument.value.instrumentName]
+            var err = closeInstrument.route("error")
             
             if (!instrument) {
-                err.send('Instrument ' + close_instrument.value.instrument_name + ' not found')
+                err.send("Instrument " + closeInstrument.value.instrumentName + " not found")
                 return
             }
             
-            if (instrument.get_status() === 'closed') {
-                err.send('Instrument already closed')
+            if (instrument.getStatus() === "closed") {
+                err.send("Instrument already closed")
                 return
             }
             
-            if (user.uname !== instrument.admin_uname) {
-                err.send('Access denied')
+            if (user.uname !== instrument.adminUname) {
+                err.send("Access denied")
                 return
             }
             
-            close_instrument.route('success').send()
+            closeInstrument.route("success").send()
             
-            for (var uname in instrument.user_positions) {
-                var pos = instrument.user_positions[uname];
-                self.users_db[uname].cash += pos.cash + pos.instrument * close_instrument.value.value;
+            for (var uname in instrument.userPositions) {
+                var pos = instrument.userPositions[uname]
+                self.usersDb[uname].cash += pos.cash + pos.instrument * closeInstrument.value.value
             }
             
-            self.write_users_db();
-            instrument.close(close_instrument.value.value) // TODO: value -> price?
+            self.writeUsersDb()
+            instrument.close(closeInstrument.value.value) // TODO: value -> price?
         })
         
-        user.sock.route('instrument_subscription').receive(function(sub) {
-            var instrument = self.instruments[sub.value];
-            var err = sub.route('error')
+        user.sock.route("instrumentSubscription").receive(function(sub) {
+            var instrument = self.instruments[sub.value]
+            var err = sub.route("error")
 
             if (!instrument) {
-                err.send('Instrument ' + sub.value + ' not found')
-                return;
+                err.send("Instrument " + sub.value + " not found")
+                return
             }
             
             if (instrument.subscriptions.hasOwnProperty(user.uname)) {
-                err.send('Already subscribed')
+                err.send("Already subscribed")
                 return
             }
             
-            instrument.subscribe(user, sub);
+            instrument.subscribe(user, sub)
         })
         
-        user.sock.route('cash').receive(function(cash) {
-            cash.send(user.db_record.cash)
+        user.sock.route("cash").receive(function(cash) {
+            cash.send(user.dbRecord.cash)
         })
         
-        user.sock.route('force_quoters_on').receive(function(fqo) {
-            var instrument = self.instruments[fqo.value];
-            var err = fqo.route('error')
+        user.sock.route("forceQuotersOn").receive(function(fqo) {
+            var instrument = self.instruments[fqo.value]
+            var err = fqo.route("error")
 
             if (!instrument) {
-                err.send('Instrument not found')
+                err.send("Instrument not found")
                 return
             }
 
-            if (user.uname !== instrument.admin_uname) {
-                err.send('Access denied')
+            if (user.uname !== instrument.adminUname) {
+                err.send("Access denied")
                 return
             }
 
-            instrument.force_quoters_on();
+            instrument.forceQuotersOn()
         })
         
-        user.sock.route('ping').receive(function(ping) {
+        user.sock.route("ping").receive(function(ping) {
             ping.send("pong")
         })
 

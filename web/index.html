@@ -5,8 +5,7 @@
 <link rel="favicon reloader" href="/favicon.ico?v=2" />
 
 <style>
-.no_select
-{
+.noSelect {
     -webkit-touch-callout: none;
     -webkit-user-select: none;
     -khtml-user-select: none;
@@ -15,27 +14,23 @@
     user-select: none;
 }
 
-body
-{
-    background-image: url('images/carbon_fibre_tile.png')
+body {
+    background-image: url("images/carbon_fibre_tile.png");
 }
 
-table
-{
+table {
     border-top: 1px solid black;
-    border-left: 1px solid black
+    border-left: 1px solid black;
 }
 
-td
-{
+td {
     border-right: 1px solid black;
     border-bottom: 1px solid black;
     background-color: white;
     padding: 7px;
 }
 
-th
-{
+th {
     border-right: 1px solid black;
     border-bottom: 1px solid black;
     background-color: #5da1a3;
@@ -43,8 +38,7 @@ th
     padding: 10px;
 }
 
-.no_bg
-{
+.noBg {
     background-color: transparent;
     background-image: none;
 }
@@ -54,31 +48,30 @@ th
 <link rel="stylesheet" href="css/alertify.core.css"/>
 <link rel="stylesheet" href="css/alertify.default.css"/>
 
-<script src='js/alertify.js'></script>
+<script src="js/alertify.js"></script>
 
 <script>
-'use strict';
-var exports = {};
-//function require() { return exports; }
+"use strict"
+var exports = {}
+//function require() { return exports }
 </script>
 
-<script src='js/sha2.js'></script>
-<script src='js/dbl.js'></script>
-<script src='js/moment.js'></script>
-<script src='js/timestamp.js'></script>
-<script src='js/config.js'></script>
-<script src='js/logger.js'></script>
-<script src='js/utils.js'></script>
-<!-- <script src='js/peer.js'></script> -->
-<script src='js/quoter.js'></script>
-<script src='js/web_utils.js'></script>
-<script src='js/observable.js'></script>
-<script src='js/sockception/index.js'></script>
-<script src='js/sockception/util.js'></script>
+<script src="js/sha2.js"></script>
+<script src="js/dbl.js"></script>
+<script src="js/moment.js"></script>
+<script src="js/timestamp.js"></script>
+<script src="js/config.js"></script>
+<script src="js/logger.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/quoter.js"></script>
+<script src="js/webUtils.js"></script>
+<script src="js/observable.js"></script>
+<script src="js/sockception/index.js"></script>
+<script src="js/sockception/util.js"></script>
 
 <script>
 
-'use strict';
+"use strict"
 
 // TODO: Non-chrome testing
 // TODO: wtf is all this code doing inside index.html? tsk tsk...
@@ -86,7 +79,7 @@ var exports = {};
 var alertify
 var config
 var dbl
-var hex_sha256
+var hexSha256
 var observable
 var sockception
 var utils // TODO: misnaming: this comes from util.js
@@ -94,652 +87,589 @@ var utils // TODO: misnaming: this comes from util.js
 var once = sockception.util.once
 
 // TODO: fix global area pollution
-var app = {};
-app.log = new exports.logger('debug');
-var log = app.log;
+var app = {}
+app.log = new exports.logger("debug")
+var log = app.log
 
-var rand_hex = exports.rand_hex;
-var clamp = exports.clamp;
+var randHex = exports.randHex
+var clamp = exports.clamp
 
-var username;
+var username
 var chat = null
 
-var trade_elements = [];
+var tradeElements = []
 
 // TODO: fix magic numbers
-var theo = new (function()
-{
-    var self = this;
+var theo = new (function() {
+    var self = this
 
-    this.observable_value = new observable(0);
+    this.observableValue = new observable(0)
 
-    this.set = this.observable_value.set;
-    this.get = this.observable_value.get;
-    this.listen = this.observable_value.listen;
+    this.set = this.observableValue.set
+    this.get = this.observableValue.get
+    this.listen = this.observableValue.listen
 
-    this.change = function(dt)
-    {
-        if (ldr.bottom_price !== null && ldr.top_price !== null)
-        {
-            var new_value = clamp(ldr.bottom_price, self.get() + dt, ldr.top_price);
-            self.set(new_value);
+    this.change = function(dt) {
+        if (ldr.bottomPrice !== null && ldr.topPrice !== null) {
+            var newValue = clamp(ldr.bottomPrice, self.get() + dt, ldr.topPrice)
+            self.set(newValue)
         }
     }
 })
 
-var key_handlers = [];
+var keyHandlers = []
 
-var is_market_open = new observable(false);
+var isMarketOpen = new observable(false)
 
-var sock = null;
+var sock = null
 
-var position = 0;
-var cash = 0;
-var instrument_cash = 0;
+var position = 0
+var cash = 0
+var instrumentCash = 0
 
-var orders = {};
+var orders = {}
 
-var lot_sizes = [1, 2, 5, 10, 20, 50, 100, 200];
-var lot_index = 0;
+var lotSizes = [1, 2, 5, 10, 20, 50, 100, 200]
+var lotIndex = 0
 
-function bind_hotkeys() // TODO: use jwerty or similar
-{
+function bindHotkeys() { // TODO: use jwerty or similar
     // d
-    key_handlers[68] = function() { mass_delete(); }
+    keyHandlers[68] = function() { massDelete() }
     
     // Left
-    key_handlers[37] = function() { if (is_market_open.get()) qr.change_offset(-ldr.tick_size); }
+    keyHandlers[37] = function() { if (isMarketOpen.get()) qr.changeOffset(-ldr.tickSize) }
 
     // Up
-    key_handlers[38] = function() { if (is_market_open.get()) theo.change(ldr.tick_size); }
+    keyHandlers[38] = function() { if (isMarketOpen.get()) theo.change(ldr.tickSize) }
 
     // Right
-    key_handlers[39] = function() { if (is_market_open.get()) qr.change_offset(ldr.tick_size); }
+    keyHandlers[39] = function() { if (isMarketOpen.get()) qr.changeOffset(ldr.tickSize) }
 
     // Down
-    key_handlers[40] = function() { if (is_market_open.get()) theo.change(-ldr.tick_size); }
+    keyHandlers[40] = function() { if (isMarketOpen.get()) theo.change(-ldr.tickSize) }
 
     // q
-    key_handlers[81] = function() { if (is_market_open.get()) qr.toggle(); }
+    keyHandlers[81] = function() { if (isMarketOpen.get()) qr.toggle() }
     
     // r
-    key_handlers[82] = function() { if (is_market_open.get()) qr.refresh(); }
+    keyHandlers[82] = function() { if (isMarketOpen.get()) qr.refresh() }
     
     // a
-    key_handlers[65] = function() { qr.change_size(1); }
+    keyHandlers[65] = function() { qr.changeSize(1) }
     
     // z
-    key_handlers[90] = function() { qr.change_size(-1); }
+    keyHandlers[90] = function() { qr.changeSize(-1) }
     
     // s
-    key_handlers[83] = function() { increase_lot_size(); }
+    keyHandlers[83] = function() { increaseLotSize() }
     
     // x
-    key_handlers[88] = function() { decrease_lot_size(); }
+    keyHandlers[88] = function() { decreaseLotSize() }
     
     // h
-    key_handlers[72] = function() { show_hotkeys(); }
+    keyHandlers[72] = function() { showHotkeys() }
 }
 
-function unbind_hotkeys()
-{
-    key_handlers = [];
+function unbindHotkeys() {
+    keyHandlers = []
 }
 
-function format_cash(x)
-{
-    if (dbl.equal(x, 0))
-    {
-        x = 0; // Avoids -0.00
+function formatCash(x) {
+    if (dbl.equal(x, 0)) {
+        x = 0 // Avoids -0.00
     }
     
-    return '$' + x.toFixed(2);
+    return "$" + x.toFixed(2)
 }
 
-function get_selector_value(id)
-{
-    var selector = document.getElementById(id);
-    return selector.options[selector.selectedIndex].value;
+function getSelectorValue(id) {
+    var selector = document.getElementById(id)
+    return selector.options[selector.selectedIndex].value
 }
 
-function remove_element(node)
-{
-    node.parentNode.removeChild(node);
+function removeElement(node) {
+    node.parentNode.removeChild(node)
 }
 
-function remove_children(node)
-{
-    while (node.firstChild)
-    {
-        node.removeChild(node.firstChild);
+function removeChildren(node) {
+    while (node.firstChild) {
+        node.removeChild(node.firstChild)
     }
 }
 
-function add_message(msg)
-{
-    var msg_div = document.createElement('div');
-    msg_div.appendChild(document.createTextNode(msg));
-    msg_div.style.margin = '10px';
-    msg_div.style.wordWrap = 'break-word';
+function addMessage(msg) {
+    var msgDiv = document.createElement("div")
+    msgDiv.appendChild(document.createTextNode(msg))
+    msgDiv.style.margin = "10px"
+    msgDiv.style.wordWrap = "break-word"
     
-    var cc = document.getElementById('chat_display');
-    cc.appendChild(msg_div);
-    cc.scrollTop = cc.scrollHeight;
+    var cc = document.getElementById("chatDisplay")
+    cc.appendChild(msgDiv)
+    cc.scrollTop = cc.scrollHeight
 }
 
-function add_error_message(msg)
-{
-    var msg_div = document.createElement('div');
-    msg_div.appendChild(document.createTextNode(msg));
-    msg_div.style.margin = '10px';
-    msg_div.style.wordWrap = 'break-word';
-    msg_div.style.color = 'red';
+function addErrorMessage(msg) {
+    var msgDiv = document.createElement("div")
+    msgDiv.appendChild(document.createTextNode(msg))
+    msgDiv.style.margin = "10px"
+    msgDiv.style.wordWrap = "break-word"
+    msgDiv.style.color = "red"
     
-    var cc = document.getElementById('chat_display');
-    cc.appendChild(msg_div);
-    cc.scrollTop = cc.scrollHeight;
+    var cc = document.getElementById("chatDisplay")
+    cc.appendChild(msgDiv)
+    cc.scrollTop = cc.scrollHeight
 }
 
-function show_hotkeys()
-{
+function showHotkeys() {
     alertify.alert(
-        'd: delete all orders<br>' +
-        's: increment click lot size<br>' +
-        'x: decrement lot size<br>' +
-        'up arrow: increment theo<br>' +
-        'down arrow: decrement theo<br>' +
-        'q: toggle quoter<br>' +
-        'left arrow: tighten quoter<br>' +
-        'right arrow: widen quoter<br>' +
-        'a: increment quoter size<br>' +
-        'z: decrement quoter size<br>' +
-        'r: refill quotes<br>' +
-        'h: show hotkeys');
+        "d: delete all orders<br>" +
+        "s: increment click lot size<br>" +
+        "x: decrement lot size<br>" +
+        "up arrow: increment theo<br>" +
+        "down arrow: decrement theo<br>" +
+        "q: toggle quoter<br>" +
+        "left arrow: tighten quoter<br>" +
+        "right arrow: widen quoter<br>" +
+        "a: increment quoter size<br>" +
+        "z: decrement quoter size<br>" +
+        "r: refill quotes<br>" +
+        "h: show hotkeys")
 }
 
-document.onkeydown = function(e)
-{
-    if (key_handlers[e.keyCode])
-    {
-        e.preventDefault();
-        key_handlers[e.keyCode]();
+document.onkeydown = function(e) {
+    if (keyHandlers[e.keyCode]) {
+        e.preventDefault()
+        keyHandlers[e.keyCode]()
     }
 }
 
-function send_order_insert(side, price, volume, trade_cb, tag_cb)
-{
-    price = ldr.normalize_price(price);
+function sendOrderInsert(side, price, volume, tradeCb, tagCb) {
+    price = ldr.normalizePrice(price)
     
-    var order =
-    {
-        instrument_name: 'test_instrument',
+    var order = {
+        instrumentName: "testInstrument",
         price: price,
         volume: volume,
         side: side,
         expiry: null
-    };
+    }
     
-    order.sock = sock.route('order_insert').send(order)
+    order.sock = sock.route("orderInsert").send(order)
 
-    order.sock.route('tag').receive(once(function(tag) { // TODO: tags should be obsolete now
-        order.tag = tag.value;
-        orders[tag.value] = order;
+    order.sock.route("tag").receive(once(function(tag) { // TODO: tags should be obsolete now
+        order.tag = tag.value
+        orders[tag.value] = order
         
-        order.order_status = 'active';
-        order.web_elements.status_cell.innerHTML = 'active';
+        order.orderStatus = "active"
+        order.webElements.statusCell.innerHTML = "active"
 
         // TODO: do this better
-        if (tag_cb) {
-            tag_cb();
+        if (tagCb) {
+            tagCb()
         }
     }))
 
-    order.sock.route('trade').receive(function(tradeSock) {
+    order.sock.route("trade").receive(function(tradeSock) {
         var trade = tradeSock.value
 
-        position += (order.side === 'buy' ? 1 : -1) * trade.volume;
-        cash += (order.side === 'buy' ? -1 : 1) * trade.price * trade.volume;
+        position += (order.side === "buy" ? 1 : -1) * trade.volume
+        cash += (order.side === "buy" ? -1 : 1) * trade.price * trade.volume
         
-        document.getElementById('pos_display').innerHTML = position;
-        document.getElementById('pos_display').style.backgroundColor = (order.side === 'buy' ? '#88FF88' : 'FF8888');
+        document.getElementById("posDisplay").innerHTML = position
+        document.getElementById("posDisplay").style.backgroundColor = (order.side === "buy" ? "#88FF88" : "FF8888")
         
         // TODO: Need to clear timeout if a new pos change comes in
         setTimeout(
             function()
             {
-                document.getElementById('pos_display').style.backgroundColor = '';
+                document.getElementById("posDisplay").style.backgroundColor = ""
             },
-            500);
+            500)
         
-        document.getElementById('cash_display').innerHTML = format_cash(cash + instrument_cash);
-        update_valuation(); // Takes care of valuation change. TODO: Do this better.
+        document.getElementById("cashDisplay").innerHTML = formatCash(cash + instrumentCash)
+        updateValuation() // Takes care of valuation change. TODO: Do this better.
         
-        create_trade(
+        createTrade(
             order.side,
             trade.price,
-            trade.volume);
+            trade.volume)
         
-        order.volume -= trade.volume;
-        order.web_elements.volume_cell.innerHTML = order.volume;
+        order.volume -= trade.volume
+        order.webElements.volumeCell.innerHTML = order.volume
         
-        if (order.volume === 0)
-        {
-            order.order_status = 'fully traded';
-            order.web_elements.status_cell.innerHTML = order.order_status;
+        if (order.volume === 0) {
+            order.orderStatus = "fully traded"
+            order.webElements.statusCell.innerHTML = order.orderStatus
             
             setTimeout(
                 function()
                 {
-                    remove_element(order.web_elements.row);
-                    delete orders[order.tag];
+                    removeElement(order.webElements.row)
+                    delete orders[order.tag]
                 },
-                500);
+                500)
         }
         
-        if (trade_cb)
-        {
-            trade_cb();
+        if (tradeCb) {
+            tradeCb()
         }
     })
 
-    order.sock.route('deleted').receive(once(function() {
-        handle_order_deleted(order)
+    order.sock.route("deleted").receive(once(function() {
+        handleOrderDeleted(order)
     }))
 
-    order.sock.route('error').receive(function(error) {
-        order.order_status = 'rejected';
-        order.web_elements.status_cell.innerHTML = 'rejected';
+    order.sock.route("error").receive(function(error) {
+        order.orderStatus = "rejected"
+        order.webElements.statusCell.innerHTML = "rejected"
 
-        alertify.error(error.value);
+        alertify.error(error.value)
         
         setTimeout(
             function()
             {
-                remove_element(order.web_elements.row);
-                delete orders[order.tag];
+                removeElement(order.webElements.row)
+                delete orders[order.tag]
             },
-            500);
+            500)
     })
 
-    order.tag = null;
+    order.tag = null
     
-    create_order(order);
+    createOrder(order)
     
-    return order;
+    return order
 }
 
-function create_order(order)
-{
-    order.order_status = 'pending';
-    order.is_finished = function() { return (order.order_status !== 'active' && order.order_status !== 'pending'); }
+function createOrder(order) {
+    order.orderStatus = "pending"
+    order.isFinished = function() { return (order.orderStatus !== "active" && order.orderStatus !== "pending") }
     
-    order.web_elements = {};
-    order.web_elements.row = document.createElement('tr');
-    order.web_elements.side_cell = document.createElement('td');
-    order.web_elements.price_cell = document.createElement('td');
-    order.web_elements.volume_cell = document.createElement('td');
-    order.web_elements.status_cell = document.createElement('td');
-    order.web_elements.remove_cell = document.createElement('td');
+    order.webElements = {}
+    order.webElements.row = document.createElement("tr")
+    order.webElements.sideCell = document.createElement("td")
+    order.webElements.priceCell = document.createElement("td")
+    order.webElements.volumeCell = document.createElement("td")
+    order.webElements.statusCell = document.createElement("td")
+    order.webElements.removeCell = document.createElement("td")
     
-    order.web_elements.row.appendChild(order.web_elements.side_cell);
-    order.web_elements.row.appendChild(order.web_elements.price_cell);
-    order.web_elements.row.appendChild(order.web_elements.volume_cell);
-    order.web_elements.row.appendChild(order.web_elements.status_cell);
-    order.web_elements.row.appendChild(order.web_elements.remove_cell);
+    order.webElements.row.appendChild(order.webElements.sideCell)
+    order.webElements.row.appendChild(order.webElements.priceCell)
+    order.webElements.row.appendChild(order.webElements.volumeCell)
+    order.webElements.row.appendChild(order.webElements.statusCell)
+    order.webElements.row.appendChild(order.webElements.removeCell)
     
-    order.web_elements.side_cell.innerHTML = order.side;
-    order.web_elements.price_cell.innerHTML = dbl.to_string(order.price);
-    order.web_elements.volume_cell.innerHTML = order.volume;
-    order.web_elements.status_cell.innerHTML = order.order_status;
-    order.web_elements.remove_cell.innerHTML = 'x';
+    order.webElements.sideCell.innerHTML = order.side
+    order.webElements.priceCell.innerHTML = dbl.toString(order.price)
+    order.webElements.volumeCell.innerHTML = order.volume
+    order.webElements.statusCell.innerHTML = order.orderStatus
+    order.webElements.removeCell.innerHTML = "x"
     
-    order.web_elements.remove_cell.onclick = function()
-    {
-        send_delete(order.tag, false);
+    order.webElements.removeCell.onclick = function() {
+        sendDelete(order.tag, false)
     }
     
-    for (var key in order.web_elements)
-    {
-        if (key !== 'row')
-        {
-            order.web_elements[key].align = 'center';
-            order.web_elements[key].style.padding = 2;
+    for (var key in order.webElements) {
+        if (key !== "row") {
+            order.webElements[key].align = "center"
+            order.webElements[key].style.padding = 2
         }
     }
     
-    insert_after(document.getElementById('order_headings'), order.web_elements.row);
+    insertAfter(document.getElementById("orderHeadings"), order.webElements.row)
 }
 
-function create_trade(side, price, volume)
-{
-    price = Math.round(100 * price) / 100;
+function createTrade(side, price, volume) {
+    price = Math.round(100 * price) / 100
     
-    var elements = {};
-    elements.row = document.createElement('tr');
-    elements.side_cell = document.createElement('td');
-    elements.price_cell = document.createElement('td');
-    elements.volume_cell = document.createElement('td');
+    var elements = {}
+    elements.row = document.createElement("tr")
+    elements.sideCell = document.createElement("td")
+    elements.priceCell = document.createElement("td")
+    elements.volumeCell = document.createElement("td")
     
-    elements.row.appendChild(elements.side_cell);
-    elements.row.appendChild(elements.price_cell);
-    elements.row.appendChild(elements.volume_cell);
+    elements.row.appendChild(elements.sideCell)
+    elements.row.appendChild(elements.priceCell)
+    elements.row.appendChild(elements.volumeCell)
     
-    elements.side_cell.innerHTML = side;
-    elements.price_cell.innerHTML = dbl.to_string(price);
-    elements.volume_cell.innerHTML = volume;
+    elements.sideCell.innerHTML = side
+    elements.priceCell.innerHTML = dbl.toString(price)
+    elements.volumeCell.innerHTML = volume
     
-    for (var key in elements)
-    {
-        if (key !== 'row')
-        {
-            elements[key].align = 'center';
-            elements[key].style.padding = 2;
+    for (var key in elements) {
+        if (key !== "row") {
+            elements[key].align = "center"
+            elements[key].style.padding = 2
         }
     }
     
-    insert_after(document.getElementById('trade_headings'), elements.row);
+    insertAfter(document.getElementById("tradeHeadings"), elements.row)
 
-    trade_elements.push(elements);
+    tradeElements.push(elements)
 }
 
-function clear_trades()
-{
-    for (var i in trade_elements)
-    {
-        remove_element(trade_elements[i].row);
+function clearTrades() {
+    for (var i in tradeElements) {
+        removeElement(tradeElements[i].row)
     }
 
-    trade_elements = [];
+    tradeElements = []
 }
 
-function send_delete(tag, from_quoter)
-{
-    var order = orders[tag];
+function sendDelete(tag, fromQuoter) {
+    var order = orders[tag]
 
     // TODO: make better
-    if (!from_quoter)
-    {
-        if (order === qr.bid_order || order === qr.offer_order)
-        {
-            return;
+    if (!fromQuoter) {
+        if (order === qr.bidOrder || order === qr.offerOrder) {
+            return
         }
     }
     
-    //console.log('send_delete(\'' + tag + '\')');
-    if (order && order.order_status !== 'deleting' && order.order_status !== 'deleted')
-    {
-        //console.log('actually send_delete(\'' + tag + '\'), status: ' + orders[tag].order_status);
+    //console.log("sendDelete(\"" + tag + "\")")
+    if (order && order.orderStatus !== "deleting" && order.orderStatus !== "deleted") {
+        //console.log("actually sendDelete(\"" + tag + "\"), status: " + orders[tag].orderStatus)
         
-        order.order_status = 'deleting';
-        order.web_elements.status_cell.innerHTML = 'deleting';
+        order.orderStatus = "deleting"
+        order.webElements.statusCell.innerHTML = "deleting"
         
         // TODO: argh why sock and not order.sock?
-        var order_delete = sock.route('order_delete').send(tag)
+        var orderDelete = sock.route("orderDelete").send(tag)
 
-        order_delete.route('success').receive(function() {
-            handle_order_deleted(order)
+        orderDelete.route("success").receive(function() {
+            handleOrderDeleted(order)
         })
 
-        order_delete.route('failure').receive(function() {
-            console.log('Tried to delete order not found at exchange (probably traded)')
+        orderDelete.route("failure").receive(function() {
+            console.log("Tried to delete order not found at exchange (probably traded)")
         })
     }
 }
 
-function handle_order_deleted(order)
-{
-    if (order.order_status === 'deleted')
-    {
-        return;
+function handleOrderDeleted(order) {
+    if (order.orderStatus === "deleted") {
+        return
     }
     
-    order.order_status = 'deleted';
-    order.web_elements.status_cell.innerHTML = 'deleted';
+    order.orderStatus = "deleted"
+    order.webElements.statusCell.innerHTML = "deleted"
     
     setTimeout(
         function()
         {
-            remove_element(order.web_elements.row);
-            delete orders[order.tag];
+            removeElement(order.webElements.row)
+            delete orders[order.tag]
         },
-        500);
+        500)
 }
 
-function ladder(table_node)
-{
-    var self = this;
+function ladder(tableNode) {
+    var self = this
 
-    this.table_node = table_node;
+    this.tableNode = tableNode
 
-    this.decimal_places = null;
+    this.decimalPlaces = null
 
-    this.bottom_price = null;
-    this.tick_size = null;
-    this.top_price = null;
+    this.bottomPrice = null
+    this.tickSize = null
+    this.topPrice = null
     
-    this.bid_cells = null;
-    this.price_cells = null;
-    this.offer_cells = null;
+    this.bidCells = null
+    this.priceCells = null
+    this.offerCells = null
 
-    this.description = '<font color=\'grey\'>[Closed]</font>';
-    this.description_cell = null;
+    this.description = "<font color=\"grey\">[Closed]</font>"
+    this.descriptionCell = null
 
-    this.set_description = function(description)
-    {
-        self.description = description;
-        self.description_cell.innerHTML = description;
+    this.setDescription = function(description) {
+        self.description = description
+        self.descriptionCell.innerHTML = description
     }
 
-    this.build = function(bottom_price, tick_size, top_price)
-    {
+    this.build = function(bottomPrice, tickSize, topPrice) {
         log.debug("Building ladder")
 
-        self.cleanup();
-        self.build_header();
+        self.cleanup()
+        self.buildHeader()
 
-        self.decimal_places = dbl.decimals_used(tick_size);
+        self.decimalPlaces = dbl.decimalsUsed(tickSize)
 
-        self.bottom_price = bottom_price;
-        self.tick_size = tick_size;
-        self.top_price = top_price;
+        self.bottomPrice = bottomPrice
+        self.tickSize = tickSize
+        self.topPrice = topPrice
 
-        self.bid_cells = new dbl.map();
-        self.price_cells = new dbl.map();
-        self.offer_cells = new dbl.map();
+        self.bidCells = new dbl.map()
+        self.priceCells = new dbl.map()
+        self.offerCells = new dbl.map()
         
-        for (var price = self.top_price; price >= self.bottom_price - 0.5 * tick_size; price -= tick_size)
-        {
-            self.build_level(price, tick_size);
+        for (var price = self.topPrice; price >= self.bottomPrice - 0.5 * tickSize; price -= tickSize) {
+            self.buildLevel(price, tickSize)
         }
 
-        self.price_cells.get(theo.get()).style.backgroundColor = '#88bbff';
+        self.priceCells.get(theo.get()).style.backgroundColor = "#88bbff"
 
-        theo.listen(function(theo, old_theo)
-        {
+        theo.listen(function(theo, oldTheo) {
             // TODO: assumes theo is on a tick (need nearest tick)
-            self.price_cells.get(old_theo).style.backgroundColor = '#ffffff';
-            self.price_cells.get(theo).style.backgroundColor = '#88bbff';
-        });
+            self.priceCells.get(oldTheo).style.backgroundColor = "#ffffff"
+            self.priceCells.get(theo).style.backgroundColor = "#88bbff"
+        })
     }
 
-    this.build_header = function()
-    {
-        self.table_node.innerHTML =
-        [
-            '<tr>',
-            '    <th width=210 colspan=3 align=\'center\' id=\'description_display\'></th>',
-            '</tr>',
-            '<tr>',
-            '    <td width=70 align=\'center\'>Bid</td>',
-            '    <td width=70 align=\'center\'>Price</td>',
-            '    <td width=70 align=\'center\'>Offer</td>',
-            '</tr>'
-        ].join('\n');
+    this.buildHeader = function() {
+        self.tableNode.innerHTML = [
+            "<tr>",
+            "    <th width=210 colspan=3 align=\"center\" id=\"descriptionDisplay\"></th>",
+            "</tr>",
+            "<tr>",
+            "    <td width=70 align=\"center\">Bid</td>",
+            "    <td width=70 align=\"center\">Price</td>",
+            "    <td width=70 align=\"center\">Offer</td>",
+            "</tr>"
+        ].join("\n")
 
-        self.description_cell = document.getElementById('description_display');
-        self.description_cell.innerHTML = self.description;
+        self.descriptionCell = document.getElementById("descriptionDisplay")
+        self.descriptionCell.innerHTML = self.description
     }
 
-    this.build_level = function(price, tick_size)
-    {
-        if (dbl.equal(price, 0))
-        {
-            price = 0; // Avoids printing prices like "-0.00"
+    this.buildLevel = function(price, tickSize) {
+        if (dbl.equal(price, 0)) {
+            price = 0 // Avoids printing prices like "-0.00"
         }
         
-        var row = document.createElement('tr');
-        var bid_cell = document.createElement('td');
-        var price_cell = document.createElement('td');
-        var offer_cell = document.createElement('td');
+        var row = document.createElement("tr")
+        var bidCell = document.createElement("td")
+        var priceCell = document.createElement("td")
+        var offerCell = document.createElement("td")
         
-        bid_cell.align = 'center';
-        price_cell.align = 'center';
-        offer_cell.align = 'center';
+        bidCell.align = "center"
+        priceCell.align = "center"
+        offerCell.align = "center"
         
-        price_cell.innerHTML = price.toFixed(self.decimal_places);
+        priceCell.innerHTML = price.toFixed(self.decimalPlaces)
         
-        row.appendChild(bid_cell);
-        row.appendChild(price_cell);
-        row.appendChild(offer_cell);
+        row.appendChild(bidCell)
+        row.appendChild(priceCell)
+        row.appendChild(offerCell)
         
-        self.table_node.appendChild(row);
+        self.tableNode.appendChild(row)
         
-        self.bid_cells.set(price, bid_cell);
-        self.price_cells.set(price, price_cell);
-        self.offer_cells.set(price, offer_cell);
+        self.bidCells.set(price, bidCell)
+        self.priceCells.set(price, priceCell)
+        self.offerCells.set(price, offerCell)
         
-        bid_cell.onclick = function()
-        {
-            send_order_insert('buy', price, lot_sizes[lot_index]);
-        };
+        bidCell.onclick = function() {
+            sendOrderInsert("buy", price, lotSizes[lotIndex])
+        }
         
-        offer_cell.onclick = function()
-        {
-            send_order_insert('sell', price, lot_sizes[lot_index]);
+        offerCell.onclick = function() {
+            sendOrderInsert("sell", price, lotSizes[lotIndex])
         }
     }
 
-    this.normalize_price = function(price)
-    {
-        var price_str = price.toFixed(self.decimal_places);
-        return parseFloat(price_str);
+    this.normalizePrice = function(price) {
+        var priceStr = price.toFixed(self.decimalPlaces)
+        return parseFloat(priceStr)
     }
 
-    this.cleanup = function()
-    {
-        self.bid_cells = null;
-        self.price_cells = null;
-        self.offer_cells = null;
-        remove_children(self.table_node);
-        self.build_header();
+    this.cleanup = function() {
+        self.bidCells = null
+        self.priceCells = null
+        self.offerCells = null
+        removeChildren(self.tableNode)
+        self.buildHeader()
     }
 
-    this.build_header();
+    this.buildHeader()
 }
 
-var ldr = null;
-var qr = null;
+var ldr = null
+var qr = null
 
-window.onload = function()
-{
-    ldr = new ladder(document.getElementById('ladder_table'));
+window.onload = function() {
+    ldr = new ladder(document.getElementById("ladderTable"))
     
-    qr = new quoter();
+    qr = new quoter()
     
-    document.getElementById('startup_table').onkeydown = function(e)
-    {
-        if (e.keyCode === 13)
-        {
-            switch (get_selector_value('startup_selector'))
-            {
-                case 'login':
-                    login();
-                    break;
+    document.getElementById("startupTable").onkeydown = function(e) {
+        if (e.keyCode === 13) {
+            switch (getSelectorValue("startupSelector")) {
+                case "login":
+                    login()
+                    break
                 
-                case 'register':
-                    register();
-                    break;
+                case "register":
+                    register()
+                    break
                 
-                case 'change_password':
-                    change_password();
-                    break;
+                case "changePassword":
+                    changePassword()
+                    break
             }
         }
     }
     
-    document.getElementById('username_input').focus();
+    document.getElementById("usernameInput").focus()
     
-    qr.update_display();
+    qr.updateDisplay()
     
-    var chat_input = document.getElementById('chat_input');
-    chat_input.onkeydown = function(e)
-    {
-        if (e.keyCode === 13)
-        {
+    var chatInput = document.getElementById("chatInput")
+    chatInput.onkeydown = function(e) {
+        if (e.keyCode === 13) {
             if (chat === null) {
-                add_error_message('Chat not connected')
+                addErrorMessage("Chat not connected")
             } else {
-                chat.send(chat_input.value);
+                chat.send(chatInput.value)
             }
             
-            chat_input.value = '';
+            chatInput.value = ""
             
-            return false;
+            return false
         }
         
-        return true;
+        return true
     }
 }
 
-function increase_lot_size()
-{
-    lot_index++;
-    if (lot_index >= lot_sizes.length)
-    {
-        lot_index = lot_sizes.length - 1;
+function increaseLotSize() {
+    lotIndex++
+    if (lotIndex >= lotSizes.length) {
+        lotIndex = lotSizes.length - 1
     }
     
-    document.getElementById('lot_size_display').innerHTML = lot_sizes[lot_index];
+    document.getElementById("lotSizeDisplay").innerHTML = lotSizes[lotIndex]
 }
 
-function decrease_lot_size()
-{
-    lot_index--;
-    if (lot_index < 0)
-    {
-        lot_index = 0;
+function decreaseLotSize() {
+    lotIndex--
+    if (lotIndex < 0) {
+        lotIndex = 0
     }
     
-    document.getElementById('lot_size_display').innerHTML = lot_sizes[lot_index];
+    document.getElementById("lotSizeDisplay").innerHTML = lotSizes[lotIndex]
 }
 
-function update_valuation()
-{
-    document.getElementById('valuation_display').innerHTML = format_cash(cash + instrument_cash + theo.get() * position);
+function updateValuation() {
+    document.getElementById("valuationDisplay").innerHTML = formatCash(cash + instrumentCash + theo.get() * position)
 }
 
-theo.listen(update_valuation);
+theo.listen(updateValuation)
 
-function mass_delete()
-{
-    //peer.get('mass_delete', null, {}); // Currently ignoring ack
-    for (var tag in orders)
-    {
-        send_delete(parseInt(tag), false);
+function massDelete() {
+    //peer.get("massDelete", null, {}) // Currently ignoring ack
+    for (var tag in orders) {
+        sendDelete(parseInt(tag), false)
     }
 }
 
-function login()
-{
-    username = document.getElementById('username_input').value;
+function login() {
+    username = document.getElementById("usernameInput").value
     
-    var sock_connected_at_start = !!sock;
+    var sockConnectedAtStart = !!sock
 
-    if (!sock)
-    {
-        sock = sockception.connect('ws://' + config.host + ':' + config.port + '/')
+    if (!sock) {
+        sock = sockception.connect("ws://" + config.host + ":" + config.port + "/")
 
-        // TODO: don't use impl / expose this kind of thing properly
+        // TODO: don"t use impl / expose this kind of thing properly
         sock.impl.factory.log = function() {
             var str = ""
             for (var i = 0; i !== arguments.length; i++) {
@@ -753,439 +683,415 @@ function login()
     }
     
     var run = function() {
-        sock.route('clue_request').send(username).receive(function(clue) {
-            var startup_type = get_selector_value('startup_selector');
+        sock.route("clueRequest").send(username).receive(function(clue) {
+            var startupType = getSelectorValue("startupSelector")
             
             var passwd = document.getElementById(
-                startup_type === 'login' ?
-                'login_password_input' :
-                'change_password_old_password_input').value;
+                startupType === "login" ?
+                "loginPasswordInput" :
+                "changePasswordOldPasswordInput").value
             
-            var new_passwd = document.getElementById(
-                startup_type === 'login' ?
-                'login_password_input' :
-                'change_password_new_password_input').value;
+            var newPasswd = document.getElementById(
+                startupType === "login" ?
+                "loginPasswordInput" :
+                "changePasswordNewPasswordInput").value
             
-            var hash = hex_sha256(clue.value + passwd);
-            var next_clue = rand_hex();
+            var hash = hexSha256(clue.value + passwd)
+            var nextClue = randHex()
             
-            var login_request = sock.route('login_request').send({
+            var loginRequest = sock.route("loginRequest").send({
                 uname: username,
                 hash: hash,
-                next_clue: next_clue,
-                next_double_hash: hex_sha256(hex_sha256(next_clue + new_passwd))
+                nextClue: nextClue,
+                nextDoubleHash: hexSha256(hexSha256(nextClue + newPasswd))
             })
             
-            login_request.route('success').receive(handle_login)
+            loginRequest.route("success").receive(handleLogin)
 
-            login_request.route('failure').receive(function() {
-                var failure_element = (
-                    get_selector_value('startup_selector') === 'login' ?
-                    document.getElementById('login_password_input') :
-                    document.getElementById('change_password_old_password_input'));
+            loginRequest.route("failure").receive(function() {
+                var failureElement = (
+                    getSelectorValue("startupSelector") === "login" ?
+                    document.getElementById("loginPasswordInput") :
+                    document.getElementById("changePasswordOldPasswordInput"))
                 
-                failure_element.value = 'login failure';
-                failure_element.type = 'text';
+                failureElement.value = "login failure"
+                failureElement.type = "text"
                 
                 setTimeout(
                     function()
                     {
-                        failure_element.value = '';
-                        failure_element.type = 'password';
+                        failureElement.value = ""
+                        failureElement.type = "password"
                     },
-                    500);
+                    500)
             })
 
-            login_request.route('already_logged_in').receive(function() {
-                var failure_element = document.getElementById('username_input');
-                failure_element.value = 'already logged in';
+            loginRequest.route("alreadyLoggedIn").receive(function() {
+                var failureElement = document.getElementById("usernameInput")
+                failureElement.value = "already logged in"
                 
                 setTimeout(
                     function()
                     {
-                        failure_element.value = '';
+                        failureElement.value = ""
                     },
-                    500);
+                    500)
             })
         })
     }
 
-    if (sock_connected_at_start) {
+    if (sockConnectedAtStart) {
         run()
     } else {
         sock.receive(run)
     }
 }
 
-function handle_login(newSocket)
-{
+function handleLogin(newSocket) {
     sock = newSocket // TODO: oh dear, this needs to be done in a better way
 
-    switch(get_selector_value('startup_selector'))
-    {
-        case 'login':
-            document.getElementById('login_password_input').value = 'login success!';
-            document.getElementById('login_password_input').type = 'text';
-            break;
+    switch(getSelectorValue("startupSelector")) {
+        case "login":
+            document.getElementById("loginPasswordInput").value = "login success!"
+            document.getElementById("loginPasswordInput").type = "text"
+            break
         
-        case 'register':
-            document.getElementById('register_registration_key_input').value = 'login success!';
-            break;
+        case "register":
+            document.getElementById("registerRegistrationKeyInput").value = "login success!"
+            break
         
-        case 'change_password':
-            document.getElementById('change_password_old_password_input').value = 'login success!';
-            document.getElementById('change_password_old_password_input').type = 'text';
+        case "changePassword":
+            document.getElementById("changePasswordOldPasswordInput").value = "login success!"
+            document.getElementById("changePasswordOldPasswordInput").type = "text"
             
-            document.getElementById('change_password_new_password_input').value = 'login success!';
-            document.getElementById('change_password_new_password_input').type = 'text';
+            document.getElementById("changePasswordNewPasswordInput").value = "login success!"
+            document.getElementById("changePasswordNewPasswordInput").type = "text"
             
-            document.getElementById('change_password_confirm_new_password_input').value = 'login success!';
-            document.getElementById('change_password_confirm_new_password_input').type = 'text';
-            break;
+            document.getElementById("changePasswordConfirmNewPasswordInput").value = "login success!"
+            document.getElementById("changePasswordConfirmNewPasswordInput").type = "text"
+            break
     }
     
-    if (username === 'andrew.morris') // TODO: configure this lol
-    {
-        var open_instrument_button = document.createElement('input');
-        open_instrument_button.value = 'Open';
-        open_instrument_button.type = 'button';
+    if (username === "andrew.morris") { // TODO: configure this lol
+        var openInstrumentButton = document.createElement("input")
+        openInstrumentButton.value = "Open"
+        openInstrumentButton.type = "button"
         
-        open_instrument_button.onclick = function()
-        {
-            unbind_hotkeys();
+        openInstrumentButton.onclick = function() {
+            unbindHotkeys()
             
             // TODO: I need to outlaw this technique
-            alertify.prompt('Enter description', function(e, desc) {
-            alertify.prompt('Enter bottom price', function(e, bottom_price) {
-            alertify.prompt('Enter tick size', function(e, tick_size) {
-            alertify.prompt('Enter top price', function(e, top_price) {
+            alertify.prompt("Enter description", function(e, desc) {
+            alertify.prompt("Enter bottom price", function(e, bottomPrice) {
+            alertify.prompt("Enter tick size", function(e, tickSize) {
+            alertify.prompt("Enter top price", function(e, topPrice) {
                 
-                bind_hotkeys();
+                bindHotkeys()
 
-                bottom_price = parseFloat(bottom_price);
-                tick_size = parseFloat(tick_size);
-                top_price = parseFloat(top_price);
+                bottomPrice = parseFloat(bottomPrice)
+                tickSize = parseFloat(tickSize)
+                topPrice = parseFloat(topPrice)
                 
-                var open_instrument = sock.route('open_instrument').send({
-                    instrument_name: 'test_instrument',
+                var openInstrument = sock.route("openInstrument").send({
+                    instrumentName: "testInstrument",
                     description: desc,
-                    tick_table:
-                    {
-                        bottom_price: bottom_price,
-                        tick_size: tick_size,
-                        top_price: top_price
+                    tickTable: {
+                        bottomPrice: bottomPrice,
+                        tickSize: tickSize,
+                        topPrice: topPrice
                     }
                 })
 
-                open_instrument.route('error').receive(function(s) {
+                openInstrument.route("error").receive(function(s) {
                     alertify.error(s.value)
                 })
 
-                open_instrument.route('success').receive(function() {
+                openInstrument.route("success").receive(function() {
                     // TODO: should something go here?
                 })
                 
-            })})})});
+            })})})})
         }
         
-        document.getElementById('admin_display').appendChild(open_instrument_button);
+        document.getElementById("adminDisplay").appendChild(openInstrumentButton)
         
-        var close_instrument_button = document.createElement('input');
-        close_instrument_button.value = 'Close';
-        close_instrument_button.type = 'button';
+        var closeInstrumentButton = document.createElement("input")
+        closeInstrumentButton.value = "Close"
+        closeInstrumentButton.type = "button"
         
-        close_instrument_button.onclick = function()
-        {
-            unbind_hotkeys();
+        closeInstrumentButton.onclick = function() {
+            unbindHotkeys()
             
-            alertify.prompt('Enter settlement price', function(e, price)
-            {
-                bind_hotkeys();
+            alertify.prompt("Enter settlement price", function(e, price) {
+                bindHotkeys()
                 
-                var close_instrument = sock.route('close_instrument').send({
-                    instrument_name: 'test_instrument',
+                var closeInstrument = sock.route("closeInstrument").send({
+                    instrumentName: "testInstrument",
                     value: parseFloat(price)
                 })
 
-                close_instrument.route('error').receive(function(err) {
+                closeInstrument.route("error").receive(function(err) {
                     alertify.error(err.value)
                 })
 
-                close_instrument.route('success').receive(function() {
+                closeInstrument.route("success").receive(function() {
                     // TODO: do something here?
                 })
             })
         }
         
-        document.getElementById('admin_display').appendChild(close_instrument_button);
+        document.getElementById("adminDisplay").appendChild(closeInstrumentButton)
         
-        var rego_key_button = document.createElement('input');
-        rego_key_button.value = 'Request Registration Key';
-        rego_key_button.type = 'button';
+        var regoKeyButton = document.createElement("input")
+        regoKeyButton.value = "Request Registration Key"
+        regoKeyButton.type = "button"
         
-        rego_key_button.onclick = function() {
-            sock.route('clue_request').send(username).receive(function(clue) {
-                unbind_hotkeys()
+        regoKeyButton.onclick = function() {
+            sock.route("clueRequest").send(username).receive(function(clue) {
+                unbindHotkeys()
 
-                alertify.prompt('Password', function(e, passwd) {
-                alertify.prompt('New username', function(e, new_user) {
-                    bind_hotkeys()
+                alertify.prompt("Password", function(e, passwd) {
+                alertify.prompt("New username", function(e, newUser) {
+                    bindHotkeys()
 
-                    var next_clue = utils.rand_hex();
+                    var nextClue = utils.randHex()
                     
-                    var rkr = sock.route('registration_key_request').send({
-                        hash: hex_sha256(clue + passwd),
-                        next_clue: next_clue,
-                        next_double_hash: hex_sha256(hex_sha256(next_clue + passwd)),
-                        new_user: new_user
+                    var rkr = sock.route("registrationKeyRequest").send({
+                        hash: hexSha256(clue + passwd),
+                        nextClue: nextClue,
+                        nextDoubleHash: hexSha256(hexSha256(nextClue + passwd)),
+                        newUser: newUser
                     })
 
-                    rkr.route('registration_key').receive(function(key) {
+                    rkr.route("registrationKey").receive(function(key) {
                         alertify.alert(key.value)
                     })
 
-                    rkr.route('failure').receive(function() {
-                        alertify.error('Wrong password')
+                    rkr.route("failure").receive(function() {
+                        alertify.error("Wrong password")
                     })
                 })})
             })
         }
         
-        document.getElementById('admin_display').appendChild(rego_key_button);
+        document.getElementById("adminDisplay").appendChild(regoKeyButton)
 
-        var force_quoters_button = document.createElement('input');
-        force_quoters_button.value = 'Turn Quoters On';
-        force_quoters_button.type = 'button';
+        var forceQuotersButton = document.createElement("input")
+        forceQuotersButton.value = "Turn Quoters On"
+        forceQuotersButton.type = "button"
 
-        force_quoters_button.onclick = function() {
-            sock.route('force_quoters_on').send('test_instrument')
+        forceQuotersButton.onclick = function() {
+            sock.route("forceQuotersOn").send("testInstrument")
         }
         
-        document.getElementById('admin_display').appendChild(force_quoters_button);
-        document.getElementById('admin_display').appendChild(document.createElement('br'));
+        document.getElementById("adminDisplay").appendChild(forceQuotersButton)
+        document.getElementById("adminDisplay").appendChild(document.createElement("br"))
     }
     
     setTimeout(
-        function()
-        {
-            bind_hotkeys();
+        function() {
+            bindHotkeys()
             
             // TODO: (Random thought) What does the server do if you insert a 0.5 lot?
             
-            remove_element(document.getElementById('startup_table'));
-            document.getElementById('inner_layout_table').style.visibility = 'visible';
+            removeElement(document.getElementById("startupTable"))
+            document.getElementById("innerLayoutTable").style.visibility = "visible"
 
-            create_login_requests();
+            createLoginRequests()
         },
-        500);
+        500)
     
     setInterval(
         function() {
-            var send_time = new Date();
+            var sendTime = new Date()
 
-            sock.route('ping').send().receive(function() {
-                log.info('Ping time: ' + (new Date() - send_time) + 'ms');
+            sock.route("ping").send().receive(function() {
+                log.info("Ping time: " + (new Date() - sendTime) + "ms")
             })
         },
         10000)
 }
 
-function create_login_requests()
+function createLoginRequests()
 {
-    sock.route('cash').send().receive(once(function(cash_update) {
-        cash = cash_update.value
-        document.getElementById('cash_display').innerHTML = format_cash(cash + instrument_cash)
-        update_valuation()
+    sock.route("cash").send().receive(once(function(cashUpdate) {
+        cash = cashUpdate.value
+        document.getElementById("cashDisplay").innerHTML = formatCash(cash + instrumentCash)
+        updateValuation()
     }))
 
-    chat = sock.route('chat').send()
+    chat = sock.route("chat").send()
 
     chat.receive(function(msgInfo) {
-        add_message(msgInfo.value.uname + ': ' + msgInfo.value.msg)
+        addMessage(msgInfo.value.uname + ": " + msgInfo.value.msg)
     })
 
-    var instrument_subscription = sock.route('instrument_subscription').send('test_instrument')
+    var instrumentSubscription = sock.route("instrumentSubscription").send("testInstrument")
     
-    instrument_subscription.route('position_update').receive(function(position_update) {
-        instrument_cash = position_update.value.cash;
-        document.getElementById('cash_display').innerHTML = format_cash(cash + instrument_cash);
+    instrumentSubscription.route("positionUpdate").receive(function(positionUpdate) {
+        instrumentCash = positionUpdate.value.cash
+        document.getElementById("cashDisplay").innerHTML = formatCash(cash + instrumentCash)
         
-        position = position_update.value.instrument;
-        document.getElementById('pos_display').innerHTML = position;
+        position = positionUpdate.value.instrument
+        document.getElementById("posDisplay").innerHTML = position
         
-        update_valuation();
+        updateValuation()
     })
 
-    instrument_subscription.route('price_update').receive(function(price_update) {
-        var pu = price_update.value
+    instrumentSubscription.route("priceUpdate").receive(function(priceUpdate) {
+        var pu = priceUpdate.value
 
-        if (pu.volume > 0)
-        {
-            ldr.bid_cells.get(pu.price).innerHTML = pu.volume;
-        }
-        else if (pu.volume < 0)
-        {
-            ldr.offer_cells.get(pu.price).innerHTML = -pu.volume;
-        }
-        else
-        {
-            ldr.bid_cells.get(pu.price).innerHTML = '';
-            ldr.offer_cells.get(pu.price).innerHTML = '';
+        if (pu.volume > 0) {
+            ldr.bidCells.get(pu.price).innerHTML = pu.volume
+        } else if (pu.volume < 0) {
+            ldr.offerCells.get(pu.price).innerHTML = -pu.volume
+        } else {
+            ldr.bidCells.get(pu.price).innerHTML = ""
+            ldr.offerCells.get(pu.price).innerHTML = ""
         }
     })
 
-    instrument_subscription.route('status').receive(function(status) {
+    instrumentSubscription.route("status").receive(function(status) {
         var is = status.value
         
-        var is_market_open_before = is_market_open.get();
-        is_market_open.set(is.instrument_status === 'open');
+        var isMarketOpenBefore = isMarketOpen.get()
+        isMarketOpen.set(is.instrumentStatus === "open")
 
-        if (!is_market_open_before && is_market_open.get())
-        {
+        if (!isMarketOpenBefore && isMarketOpen.get()) {
             ldr.build(
-                is.tick_table.bottom_price,
-                is.tick_table.tick_size,
-                is.tick_table.top_price);
+                is.tickTable.bottomPrice,
+                is.tickTable.tickSize,
+                is.tickTable.topPrice)
             
-            qr.setup();
+            qr.setup()
             
-            document.getElementById('description_display').innerHTML = is.description;
+            document.getElementById("descriptionDisplay").innerHTML = is.description
         }
     })
 
-    instrument_subscription.route('open').receive(function(open) {
+    instrumentSubscription.route("open").receive(function(open) {
         var op = open.value
 
-        clear_trades()
+        clearTrades()
 
         ldr.build(
-            op.tick_table.bottom_price,
-            op.tick_table.tick_size,
-            op.tick_table.top_price);
+            op.tickTable.bottomPrice,
+            op.tickTable.tickSize,
+            op.tickTable.topPrice)
         
-        theo.set(0.5 * (op.tick_table.bottom_price + op.tick_table.top_price));
-        is_market_open.set(true);
+        theo.set(0.5 * (op.tickTable.bottomPrice + op.tickTable.topPrice))
+        isMarketOpen.set(true)
 
-        qr.setup();
+        qr.setup()
         
-        document.getElementById('description_display').innerHTML = op.description;
+        document.getElementById("descriptionDisplay").innerHTML = op.description
     })
 
-    instrument_subscription.route('close').receive(function(close) {
-        is_market_open.set(false);
-        theo.set(0);
-        document.getElementById('description_display').innerHTML = '<font color=\'grey\'>[Closed]</font>';
+    instrumentSubscription.route("close").receive(function(close) {
+        isMarketOpen.set(false)
+        theo.set(0)
+        document.getElementById("descriptionDisplay").innerHTML = "<font color=\"grey\">[Closed]</font>"
 
-        cash += instrument_cash;
-        instrument_cash = 0;
+        cash += instrumentCash
+        instrumentCash = 0
 
-        cash += position * close.value; // TODO: cash is an observable
-        position = 0;
-        update_valuation();
-        document.getElementById('pos_display').innerHTML = position;
-        document.getElementById('cash_display').innerHTML = format_cash(cash + instrument_cash);
+        cash += position * close.value // TODO: cash is an observable
+        position = 0
+        updateValuation()
+        document.getElementById("posDisplay").innerHTML = position
+        document.getElementById("cashDisplay").innerHTML = formatCash(cash + instrumentCash)
 
-        ldr.cleanup();
+        ldr.cleanup()
     })
 
-    instrument_subscription.route('error').receive(function(error) {
+    instrumentSubscription.route("error").receive(function(error) {
         alertify.alert(error.value)
     })
 
-    instrument_subscription.route('force_quoter_on').receive(function() {
+    instrumentSubscription.route("forceQuoterOn").receive(function() {
         qr.toggle()
     })
 }
 
-function register()
-{
-    var confirm_field = document.getElementById('register_confirm_password_input');
+function register() {
+    var confirmField = document.getElementById("registerConfirmPasswordInput")
     
     if (
-        document.getElementById('register_password_input').value !==
-        confirm_field.value)
-    {
-        confirm_field.value = 'doesn\'t match';
-        confirm_field.type = 'text';
+        document.getElementById("registerPasswordInput").value !==
+        confirmField.value
+    ) {
+        confirmField.value = "doesn\"t match"
+        confirmField.type = "text"
         
         setTimeout(
-            function()
-            {
-                confirm_field.value = '';
-                confirm_field.type = 'password';
+            function() {
+                confirmField.value = ""
+                confirmField.type = "password"
             },
-            500);
+            500)
         
-        return;
+        return
     }
     
-    var uname = document.getElementById('username_input').value;
+    var uname = document.getElementById("usernameInput").value
 
-    sock.route('clue_request').send(uname).receive(function(clue) {
-        var rego_key_field = document.getElementById('register_registration_key_input');
-        var next_clue = rand_hex();
+    sock.route("clueRequest").send(uname).receive(function(clue) {
+        var regoKeyField = document.getElementById("registerRegistrationKeyInput")
+        var nextClue = randHex()
         
-        var registration_request = sock.route('registration_request').send({
-            double_hash: hex_sha256(rego_key_field.value + clue.value),
-            next_clue: next_clue,
-            next_double_hash: hex_sha256(hex_sha256(next_clue + document.getElementById('register_password_input').value))
+        var registrationRequest = sock.route("registrationRequest").send({
+            doubleHash: hexSha256(regoKeyField.value + clue.value),
+            nextClue: nextClue,
+            nextDoubleHash: hexSha256(hexSha256(nextClue + document.getElementById("registerPasswordInput").value))
         })
 
-        registration_request.route('success').receive(handle_login)
+        registrationRequest.route("success").receive(handleLogin)
 
-        registration_request.route('failure').receive(function() {
-            rego_key_field.value = 'failure'
+        registrationRequest.route("failure").receive(function() {
+            regoKeyField.value = "failure"
 
             setTimeout(
-                function()
-                {
-                    rego_key_field.value = '';
+                function() {
+                    regoKeyField.value = ""
                 },
-                500); // TODO: config
+                500) // TODO: config
         })
     })
 }
 
-function change_password()
-{
-    var new_password_input = document.getElementById('change_password_new_password_input');
-    var confirm_new_password_input = document.getElementById('change_password_confirm_new_password_input');
+function changePassword() {
+    var newPasswordInput = document.getElementById("changePasswordNewPasswordInput")
+    var confirmNewPasswordInput = document.getElementById("changePasswordConfirmNewPasswordInput")
     
-    if (new_password_input.value !== confirm_new_password_input.value)
-    {
-        confirm_new_password_input.value = 'doesn\'t match';
-        confirm_new_password_input.type = 'text';
+    if (newPasswordInput.value !== confirmNewPasswordInput.value) {
+        confirmNewPasswordInput.value = "doesn\"t match"
+        confirmNewPasswordInput.type = "text"
         
         setTimeout(
-            function()
-            {
-                confirm_new_password_input.value = '';
-                confirm_new_password_input.type = 'password';
+            function() {
+                confirmNewPasswordInput.value = ""
+                confirmNewPasswordInput.type = "password"
             },
-            500);
+            500)
         
-        return;
+        return
     }
     
-    login();
+    login()
 }
 
-function update_startup_table()
-{
-    var row_ids =
-    {
-        login: ['login_row_1'],
-        register: ['register_row_1', 'register_row_2', 'register_row_3'],
-        change_password: ['change_password_row_1', 'change_password_row_2', 'change_password_row_3']
-    };
+function updateStartupTable() {
+    var rowIds = {
+        login: ["loginRow1"],
+        register: ["registerRow1", "registerRow2", "registerRow3"],
+        changePassword: ["changePasswordRow1", "changePasswordRow2", "changePasswordRow3"]
+    }
     
-    for (var display_type in row_ids)
-    {
-        var display_value = (display_type === get_selector_value('startup_selector') ? '' : 'none');
+    for (var displayType in rowIds) {
+        var displayValue = (displayType === getSelectorValue("startupSelector") ? "" : "none")
         
-        for (var i in row_ids[display_type])
-        {
-            document.getElementById(row_ids[display_type][i]).style.display = display_value;
+        for (var i in rowIds[displayType]) {
+            document.getElementById(rowIds[displayType][i]).style.display = displayValue
         }
     }
 }
@@ -1193,171 +1099,171 @@ function update_startup_table()
 </script>
 
 </head>
-<body style='font-family:consolas,courier new;margin:0' class='no_select'>
+<body style="font-family:consolas,courier new;margin:0" class="noSelect">
 
-<a href='/'><img style='position:absolute;top:50;left:50%;margin-top:-35px;margin-left:-35px;width:70px;height:70px;' src='images/logo.png'/></a>
+<a href="/"><img style="position:absolute;top:50;left:50%;margin-top:-35px;margin-left:-35px;width:70px;height:70px;" src="images/logo.png"/></a>
 
-<table cellspacing=0 id='main_table' width='100%'>
+<table cellspacing=0 id="mainTable" width="100%">
 
-<tr><td style='background-color:#16383f;height:50px;border-bottom:none;'></td></tr>
-<tr><td style='background-color:#dcedf0;height:10px;padding:0px;'></td></tr>
-<tr><td style='height:25px;border-bottom:none' class='no_bg'></td></tr>
+<tr><td style="background-color:#16383f;height:50px;border-bottom:none;"></td></tr>
+<tr><td style="background-color:#dcedf0;height:10px;padding:0px;"></td></tr>
+<tr><td style="height:25px;border-bottom:none" class="noBg"></td></tr>
 
-<tr><td class='no_bg'>
+<tr><td class="noBg">
 
-<table style='border:none' align='center' id='startup_table'><tr><td style='border:none;background-color:transparent'><table cellspacing=0 align='center'>
+<table style="border:none" align="center" id="startupTable"><tr><td style="border:none;background-color:transparent"><table cellspacing=0 align="center">
     <tr>
-        <th colspan=2 align='center'>
-            <select id='startup_selector' style='font-size:16px' onchange='update_startup_table();'>
-                <option value='login'>Login</option>
-                <option value='register'>Register</option>
-                <option value='change_password'>Change Password</option>
+        <th colspan=2 align="center">
+            <select id="startupSelector" style="font-size:16px" onchange="updateStartupTable()">
+                <option value="login">Login</option>
+                <option value="register">Register</option>
+                <option value="changePassword">Change Password</option>
             </select>
         </th>
     </tr>
     <tr>
         <td>Username</td>
-        <td><input type='text' id='username_input'/></td>
+        <td><input type="text" id="usernameInput"/></td>
     </tr>
     <!-- Login -->
-    <tr id='login_row_1'>
+    <tr id="loginRow1">
         <td>Password</td>
-        <td><input type='password' id='login_password_input'/></td>
+        <td><input type="password" id="loginPasswordInput"/></td>
     </tr>
     <!-- Register -->
-    <tr id='register_row_1' style='display:none'>
+    <tr id="registerRow1" style="display:none">
         <td>Registration Key</td>
-        <td><input type='text' id='register_registration_key_input'/></td>
+        <td><input type="text" id="registerRegistrationKeyInput"/></td>
     </tr>
-    <tr id='register_row_2' style='display:none'>
+    <tr id="registerRow2" style="display:none">
         <td>Password</td>
-        <td><input type='password' id='register_password_input'/></td>
+        <td><input type="password" id="registerPasswordInput"/></td>
     </tr>
-    <tr id='register_row_3' style='display:none'>
+    <tr id="registerRow3" style="display:none">
         <td>Confirm Password</td>
-        <td><input type='password' id='register_confirm_password_input'/></td>
+        <td><input type="password" id="registerConfirmPasswordInput"/></td>
     </tr>
     <!-- Change Password -->
-    <tr id='change_password_row_1' style='display:none'>
+    <tr id="changePasswordRow1" style="display:none">
         <td>Old Password</td>
-        <td><input type='password' id='change_password_old_password_input'/></td>
+        <td><input type="password" id="changePasswordOldPasswordInput"/></td>
     </tr>
-    <tr id='change_password_row_2' style='display:none'>
+    <tr id="changePasswordRow2" style="display:none">
         <td>New Password</td>
-        <td><input type='password' id='change_password_new_password_input'/></td>
+        <td><input type="password" id="changePasswordNewPasswordInput"/></td>
     </tr>
-    <tr id='change_password_row_3' style='display:none'>
+    <tr id="changePasswordRow3" style="display:none">
         <td>Confirm New Password</td>
-        <td><input type='password' id='change_password_confirm_new_password_input'/></td>
+        <td><input type="password" id="changePasswordConfirmNewPasswordInput"/></td>
     </tr>
 </table></td></tr></table>
 
-<table align='center' cellpadding='20' width='100%' style='visibility:hidden;border:0' id='inner_layout_table'><tr><td class='no_bg' width='33%' valign='top' style='border:0'>
+<table align="center" cellpadding="20" width="100%" style="visibility:hidden;border:0" id="innerLayoutTable"><tr><td class="noBg" width="33%" valign="top" style="border:0">
 
-<table align='center' cellspacing=0 id='lot_size_selector' width='100%'>
+<table align="center" cellspacing=0 id="lotSizeSelector" width="100%">
     <tr>
-        <th colspan=3 align='center'>Position</th>
+        <th colspan=3 align="center">Position</th>
     </tr>
     <tr>
-        <td align='center' width='33%'>Cash</td>
-        <td align='center' width='34%'>Contracts</td>
-        <td align='center' width='33%'>Valuation</td>
+        <td align="center" width="33%">Cash</td>
+        <td align="center" width="34%">Contracts</td>
+        <td align="center" width="33%">Valuation</td>
     </tr>
     <tr>
-        <td align='center' width='33%' id='cash_display'></td>
-        <td align='center' width='34%' id='pos_display'></td>
-        <td align='center' width='33%' id='valuation_display'></td>
+        <td align="center" width="33%" id="cashDisplay"></td>
+        <td align="center" width="34%" id="posDisplay"></td>
+        <td align="center" width="33%" id="valuationDisplay"></td>
     </tr>
 </table>
 <br>
 
-<div id='admin_display' align='center'></div>
+<div id="adminDisplay" align="center"></div>
 
 <br>
 
 <!-- Chat -->
-<table align='center' cellspacing=0 cellpadding=0 width='100%'>
+<table align="center" cellspacing=0 cellpadding=0 width="100%">
     <tr>
-        <th align='center' style='padding:10;'>
+        <th align="center" style="padding:10;">
             Chat 
         </th>
     </tr>
     <tr>
-        <td height=300 width='100%'>
-            <div id='chat_display' style="width:100%;height:100%;overflow:auto;word-wrap:break-word;"></div> 
+        <td height=300 width="100%">
+            <div id="chatDisplay" style="width:100%;height:100%;overflow:auto;word-wrap:break-word;"></div> 
         </td>
     </tr>
     <tr>
-        <td style='padding:0px'>
-            <textarea id='chat_input' style='width:100%;height:100%;border:0;' onfocus='unbind_hotkeys();' onblur='bind_hotkeys();'></textarea>
+        <td style="padding:0px">
+            <textarea id="chatInput" style="width:100%;height:100%;border:0;" onfocus="unbindHotkeys()" onblur="bindHotkeys()"></textarea>
         </td>
     </tr>
 </table>
 
-</td><td class='no_bg' width='34%' valign='top' style='border:0'>
+</td><td class="noBg" width="34%" valign="top" style="border:0">
 
-<table align='center' cellspacing=0 id='ladder_table' frame='box' rules='all'>
+<table align="center" cellspacing=0 id="ladderTable" frame="box" rules="all">
 </table>
 
-</td><td class='no_bg' width='33%' valign='top' style='border:0'>
+</td><td class="noBg" width="33%" valign="top" style="border:0">
 
-<table align='center' cellspacing=0 id='lot_size_selector' style='width:100%'>
+<table align="center" cellspacing=0 id="lotSizeSelector" style="width:100%">
     <tr>
-        <th colspan=3 align='center'>Lot Size</th>
+        <th colspan=3 align="center">Lot Size</th>
     </tr>
     <tr>
-        <td width='33%' align='center' onclick='decrease_lot_size()'>-</td>
-        <td width='34%' align='center' id='lot_size_display'>1</td>
-        <td width='33%' align='center' onclick='increase_lot_size()' unselectable='on'>+</td>
+        <td width="33%" align="center" onclick="decreaseLotSize()">-</td>
+        <td width="34%" align="center" id="lotSizeDisplay">1</td>
+        <td width="33%" align="center" onclick="increaseLotSize()" unselectable="on">+</td>
     </tr>
 </table>
 
 <br>
 
-<table align='center' cellspacing=0 id='quoter_table' style='width:100%'>
+<table align="center" cellspacing=0 id="quoterTable" style="width:100%">
     <tr>
-        <th colspan=3 align='center'>Quoter</th>
+        <th colspan=3 align="center">Quoter</th>
     </tr>
     <tr>
-        <td width='33%' align='center'>On</td>
-        <td width='34%' align='center'>Offset</td>
-        <td width='33%' align='center'>Size</td>
+        <td width="33%" align="center">On</td>
+        <td width="34%" align="center">Offset</td>
+        <td width="33%" align="center">Size</td>
     </tr>
     <tr>
-        <td align='center' id='quoter_on_display'></td>
-        <td align='center' id='quoter_offset_display'></td>
-        <td align='center' id='quoter_size_display'></td>
+        <td align="center" id="quoterOnDisplay"></td>
+        <td align="center" id="quoterOffsetDisplay"></td>
+        <td align="center" id="quoterSizeDisplay"></td>
     </tr>
 </table>
 
 <br>
 
-<div style='width:100%;height:300;overflow:auto;background-color:white;'>
-    <table align='center' cellspacing=0 id='order_table' width='100%'>
+<div style="width:100%;height:300;overflow:auto;background-color:white;">
+    <table align="center" cellspacing=0 id="orderTable" width="100%">
         <tr>
-            <th colspan=5 align='center'>Orders</th>
+            <th colspan=5 align="center">Orders</th>
         </tr>
-        <tr id='order_headings'>
-            <td align='center' width='15%'>Side</td>
-            <td align='center' width='17%'>Price</td>
-            <td align='center' width='20%'>Volume</td>
-            <td align='center' width='37%'>Status</td>
-            <td align='center' width='11%' onclick='mass_delete();'>x</td>
+        <tr id="orderHeadings">
+            <td align="center" width="15%">Side</td>
+            <td align="center" width="17%">Price</td>
+            <td align="center" width="20%">Volume</td>
+            <td align="center" width="37%">Status</td>
+            <td align="center" width="11%" onclick="massDelete()">x</td>
         </tr>
     </table>
 </div>
 
 <br>
 
-<div style='width:100%;height:300;overflow:auto;background-color:white;'>
-    <table align='center' cellspacing=0 id='trade_table' width='100%'>
+<div style="width:100%;height:300;overflow:auto;background-color:white;">
+    <table align="center" cellspacing=0 id="tradeTable" width="100%">
         <tr>
-            <th colspan=5 align='center'>Trades</th>
+            <th colspan=5 align="center">Trades</th>
         </tr>
-        <tr id='trade_headings'>
-            <td align='center' width='33%'>Side</td>
-            <td align='center' width='34%'>Price</td>
-            <td align='center' width='33%'>Volume</td>
+        <tr id="tradeHeadings">
+            <td align="center" width="33%">Side</td>
+            <td align="center" width="34%">Price</td>
+            <td align="center" width="33%">Volume</td>
         </tr>
     </table>
 </div>

@@ -6,316 +6,265 @@
 var clamp
 var config
 var dbl
-var is_market_open
+var isMarketOpen
 var ldr
 var log
-var lot_sizes
+var lotSizes
 var observable
-var send_delete
-var send_order_insert
+var sendDelete
+var sendOrderInsert
 var theo
 
 function quoter()
 {
-    var self = this;
+    var self = this
     
-    this.offset = new observable(1);
-    this.on = false;
-    this.size_index = 0;
+    this.offset = new observable(1)
+    this.on = false
+    this.sizeIndex = 0
 
-    this.bid_order = null;
-    this.offer_order = null;
+    this.bidOrder = null
+    this.offerOrder = null
 
-    this.bid_price = null;
-    this.offer_price = null;
+    this.bidPrice = null
+    this.offerPrice = null
 
-    this.toggle = function()
-    {
-        if (self.on && is_market_open.get())
-        {
-            return;
+    this.toggle = function() {
+        if (self.on && isMarketOpen.get()) {
+            return
         }
         
-        self.on = !self.on && is_market_open.get();
-        document.getElementById('quoter_on_display').innerHTML = self.on;
-        self.refresh();
+        self.on = !self.on && isMarketOpen.get()
+        document.getElementById("quoterOnDisplay").innerHTML = self.on
+        self.refresh()
     }
 
-    this.setup = function()
-    {
-        self.offset.set(config.quoter.max_offset_ticks * ldr.tick_size);
+    this.setup = function() {
+        self.offset.set(config.quoter.maxOffsetTicks * ldr.tickSize)
         
-        self.bid_price = self.calculate_bid_price();
-        self.offer_price = self.calculate_offer_price();
+        self.bidPrice = self.calculateBidPrice()
+        self.offerPrice = self.calculateOfferPrice()
         
-        self.refresh_bid();
-        self.refresh_offer();
+        self.refreshBid()
+        self.refreshOffer()
         
-        ldr.bid_cells.get(self.bid_price).style.backgroundColor = '#ccddff';
-        ldr.offer_cells.get(self.offer_price).style.backgroundColor = '#ccddff';
+        ldr.bidCells.get(self.bidPrice).style.backgroundColor = "#ccddff"
+        ldr.offerCells.get(self.offerPrice).style.backgroundColor = "#ccddff"
     }
 
-    this.refresh = function()
-    {
-        ldr.bid_cells.get(self.bid_price).style.backgroundColor = '';
-        ldr.offer_cells.get(self.offer_price).style.backgroundColor = '';
+    this.refresh = function() {
+        ldr.bidCells.get(self.bidPrice).style.backgroundColor = ""
+        ldr.offerCells.get(self.offerPrice).style.backgroundColor = ""
         
-        self.refresh_bid();
-        self.refresh_offer();
+        self.refreshBid()
+        self.refreshOffer()
         
-        ldr.bid_cells.get(self.bid_price).style.backgroundColor = '#ccddff';
-        ldr.offer_cells.get(self.offer_price).style.backgroundColor = '#ccddff';
+        ldr.bidCells.get(self.bidPrice).style.backgroundColor = "#ccddff"
+        ldr.offerCells.get(self.offerPrice).style.backgroundColor = "#ccddff"
     }
 
-    theo.listen(function()
-    {
-        if (self.bid_price === null || self.offer_price === null) {
+    theo.listen(function() {
+        if (self.bidPrice === null || self.offerPrice === null) {
             return
         }
 
-        ldr.bid_cells.get(self.bid_price).style.backgroundColor = '';
-        ldr.offer_cells.get(self.offer_price).style.backgroundColor = '';
+        ldr.bidCells.get(self.bidPrice).style.backgroundColor = ""
+        ldr.offerCells.get(self.offerPrice).style.backgroundColor = ""
         
-        if (self.bid_order && !self.bid_order.is_finished())
-        {
-            self.refresh_bid();
-        }
-        else
-        {
-            self.bid_price = self.calculate_bid_price(); // TODO: this is dodgy, it's for highlighting
+        if (self.bidOrder && !self.bidOrder.isFinished()) {
+            self.refreshBid()
+        } else {
+            self.bidPrice = self.calculateBidPrice(); // TODO: this is dodgy, it"s for highlighting
         }
         
-        if (self.offer_order && !self.offer_order.is_finished())
-        {
-            self.refresh_offer();
-        }
-        else
-        {
-            self.offer_price = self.calculate_offer_price(); // TODO: this is dodgy, it's for highlighting
+        if (self.offerOrder && !self.offerOrder.isFinished()) {
+            self.refreshOffer()
+        } else {
+            self.offerPrice = self.calculateOfferPrice() // TODO: this is dodgy, it"s for highlighting
         }
         
-        ldr.bid_cells.get(self.bid_price).style.backgroundColor = '#ccddff';
-        ldr.offer_cells.get(self.offer_price).style.backgroundColor = '#ccddff';
-    });
+        ldr.bidCells.get(self.bidPrice).style.backgroundColor = "#ccddff"
+        ldr.offerCells.get(self.offerPrice).style.backgroundColor = "#ccddff"
+    })
     
-    is_market_open.listen(function(is_open)
-    {
-        if (!is_open && self.on)
-        {
-            self.toggle();
+    isMarketOpen.listen(function(isOpen) {
+        if (!isOpen && self.on) {
+            self.toggle()
         }
-    });
+    })
 
-    this.change_offset = function(offset_diff)
-    {
-        if (!is_market_open.get())
-        {
-            log.error('Can\'t change offset while market is closed');
-            return;
+    this.changeOffset = function(offsetDiff) {
+        if (!isMarketOpen.get()) {
+            log.error("Can\"t change offset while market is closed")
+            return
         }
         
-        ldr.bid_cells.get(self.bid_price).style.backgroundColor = '';
-        ldr.offer_cells.get(self.offer_price).style.backgroundColor = '';
+        ldr.bidCells.get(self.bidPrice).style.backgroundColor = ""
+        ldr.offerCells.get(self.offerPrice).style.backgroundColor = ""
         
-        var offset = self.offset.get() + offset_diff;
-        offset = clamp(ldr.tick_size, offset, config.quoter.max_offset_ticks * ldr.tick_size);
-        self.offset.set(offset);
+        var offset = self.offset.get() + offsetDiff
+        offset = clamp(ldr.tickSize, offset, config.quoter.maxOffsetTicks * ldr.tickSize)
+        self.offset.set(offset)
 
-        self.bid_price = self.calculate_bid_price();
-        self.offer_price = self.calculate_offer_price();
+        self.bidPrice = self.calculateBidPrice()
+        self.offerPrice = self.calculateOfferPrice()
         
-        ldr.bid_cells.get(self.bid_price).style.backgroundColor = '#ccddff';
-        ldr.offer_cells.get(self.offer_price).style.backgroundColor = '#ccddff';
+        ldr.bidCells.get(self.bidPrice).style.backgroundColor = "#ccddff"
+        ldr.offerCells.get(self.offerPrice).style.backgroundColor = "#ccddff"
         
-        document.getElementById('quoter_offset_display').innerHTML = dbl.to_string(self.offset.get());
+        document.getElementById("quoterOffsetDisplay").innerHTML = dbl.toString(self.offset.get())
         
-        self.refresh();
+        self.refresh()
     }
 
-    this.calculate_bid_price = function()
-    {
-        var bid_price = exports.clamp(ldr.bottom_price, theo.get() - self.offset.get(), ldr.top_price);
-        var level = dbl.floor((bid_price - ldr.bottom_price) / ldr.tick_size);
-        bid_price = ldr.bottom_price + level * ldr.tick_size;
+    this.calculateBidPrice = function() {
+        var bidPrice = exports.clamp(ldr.bottomPrice, theo.get() - self.offset.get(), ldr.topPrice)
+        var level = dbl.floor((bidPrice - ldr.bottomPrice) / ldr.tickSize)
+        bidPrice = ldr.bottomPrice + level * ldr.tickSize
 
-        if (bid_price !== bid_price) {
-            bid_price = null
+        if (bidPrice !== bidPrice) {
+            bidPrice = null
         }
         
-        return bid_price;
+        return bidPrice
     }
 
-    this.calculate_offer_price = function()
-    {
-        var offer_price = exports.clamp(ldr.bottom_price, theo.get() + self.offset.get(), ldr.top_price);
-        var level = dbl.ceil((offer_price - ldr.bottom_price) / ldr.tick_size);
-        offer_price = ldr.bottom_price + level * ldr.tick_size;
+    this.calculateOfferPrice = function() {
+        var offerPrice = exports.clamp(ldr.bottomPrice, theo.get() + self.offset.get(), ldr.topPrice)
+        var level = dbl.ceil((offerPrice - ldr.bottomPrice) / ldr.tickSize)
+        offerPrice = ldr.bottomPrice + level * ldr.tickSize
 
-        if (offer_price !== offer_price) {
-            offer_price = null
+        if (offerPrice !== offerPrice) {
+            offerPrice = null
         }
         
-        return offer_price;
+        return offerPrice
     }
 
-    this.refresh_bid = function()
-    {
+    this.refreshBid = function() {
         var order
 
-        self.bid_price = self.calculate_bid_price();
+        self.bidPrice = self.calculateBidPrice()
         
-        if (self.on)
-        {
-            if (!self.bid_order || self.bid_order.is_finished())
-            {
-                order = send_order_insert(
-                    'buy',
-                    self.bid_price,
-                    lot_sizes[self.size_index],
-                    function()
-                    {
-                        log.info('quoter bid trade');
-                        setTimeout(self.refresh_bid, config.quoter.refresh_interval);
+        if (self.on) {
+            if (!self.bidOrder || self.bidOrder.isFinished()) {
+                order = sendOrderInsert(
+                    "buy",
+                    self.bidPrice,
+                    lotSizes[self.sizeIndex],
+                    function() {
+                        log.info("quoter bid trade")
+                        setTimeout(self.refreshBid, config.quoter.refreshInterval)
                     },
-                    function()
-                    {
-                        if (order !== self.bid_order)
-                        {
-                            send_delete(order.tag, true);
+                    function() {
+                        if (order !== self.bidOrder) {
+                            sendDelete(order.tag, true)
                         }
-                    });
+                    })
                 
-                self.bid_order = order;
+                self.bidOrder = order
 
                 /* TODO
-                self.bid_order.sub.add_handler(
-                    'trade',
-                    function()
-                    {
-                        log.info('quoter bid trade');
-                        setTimeout(self.refresh_bid, config.quoter.refresh_interval);
-                    });
+                self.bidOrder.sub.addHandler("trade", function() {
+                    log.info("quoter bid trade")
+                    setTimeout(self.refreshBid, config.quoter.refreshInterval)
+                })
                 */
-            }
-            else
-            {
+            } else {
                 // Need float comparison functions
-                if (dbl.equal(self.bid_order.price, self.bid_price) || self.bid_order.volume !== lot_sizes[self.size_index])
-                {
-                    send_delete(self.bid_order.tag, true);
+                if (dbl.equal(self.bidOrder.price, self.bidPrice) || self.bidOrder.volume !== lotSizes[self.sizeIndex]) {
+                    sendDelete(self.bidOrder.tag, true)
                     
-                    order = send_order_insert(
-                        'buy',
-                        self.bid_price,
-                        lot_sizes[self.size_index],
-                        function()
-                        {
-                            log.info('quoter bid trade');
-                            setTimeout(self.refresh_bid, config.quoter.refresh_interval);
+                    order = sendOrderInsert(
+                        "buy",
+                        self.bidPrice,
+                        lotSizes[self.sizeIndex],
+                        function() {
+                            log.info("quoter bid trade")
+                            setTimeout(self.refreshBid, config.quoter.refreshInterval)
                         },
-                        function()
-                        {
-                            if (order !== self.bid_order)
-                            {
-                                send_delete(order.tag, true);
+                        function() {
+                            if (order !== self.bidOrder) {
+                                sendDelete(order.tag, true)
                             }
-                        });
+                        })
                     
-                    self.bid_order = order;
+                    self.bidOrder = order
                 }
             }
-        }
-        else
-        {
-            if (self.bid_order && !self.bid_order.is_finished())
-            {
+        } else {
+            if (self.bidOrder && !self.bidOrder.isFinished()) {
                 // TODO: Really need to keep track of the orders that are actually still in the market
-                send_delete(self.bid_order.tag, true);
+                sendDelete(self.bidOrder.tag, true)
             }
         }
     }
 
-    this.refresh_offer = function()
-    {
+    this.refreshOffer = function() {
         var order
 
-        self.offer_price = self.calculate_offer_price();
+        self.offerPrice = self.calculateOfferPrice()
         
-        if (self.on)
-        {
-            if (!self.offer_order || self.offer_order.is_finished())
-            {
-                //self.offer_order = send_order_insert('sell', self.offer_price, lot_sizes[self.size_index]);
-                order = send_order_insert(
-                    'sell',
-                    self.offer_price,
-                    lot_sizes[self.size_index],
-                    function()
-                    {
-                        console.log('quoter offer trade');
-                        setTimeout(self.refresh_offer, config.quoter.refresh_interval);
+        if (self.on) {
+            if (!self.offerOrder || self.offerOrder.isFinished()) {
+                //self.offerOrder = sendOrderInsert("sell", self.offerPrice, lotSizes[self.sizeIndex])
+                order = sendOrderInsert(
+                    "sell",
+                    self.offerPrice,
+                    lotSizes[self.sizeIndex],
+                    function() {
+                        console.log("quoter offer trade")
+                        setTimeout(self.refreshOffer, config.quoter.refreshInterval)
                     },
-                    function()
-                    {
-                        if (order !== self.offer_order)
+                    function() {
+                        if (order !== self.offerOrder)
                         {
-                            send_delete(order.tag, true);
+                            sendDelete(order.tag, true)
                         }
-                    });
+                    })
                 
-                self.offer_order = order;
-            }
-            else
-            {
-                if (dbl.equal(self.offer_order.price, self.offer_price) || self.offer_order.volume !== lot_sizes[self.size_index])
-                {
-                    send_delete(self.offer_order.tag, true);
-                    //self.offer_order = send_order_insert('sell', self.offer_price, lot_sizes[self.size_index]);
-                    order = send_order_insert(
-                        'sell',
-                        self.offer_price,
-                        lot_sizes[self.size_index],
-                        function()
-                        {
-                            console.log('quoter offer trade');
-                            setTimeout(self.refresh_offer, config.quoter.refresh_interval);
+                self.offerOrder = order
+            } else {
+                if (dbl.equal(self.offerOrder.price, self.offerPrice) || self.offerOrder.volume !== lotSizes[self.sizeIndex]) {
+                    sendDelete(self.offerOrder.tag, true)
+                    //self.offerOrder = sendOrderInsert("sell", self.offerPrice, lotSizes[self.sizeIndex])
+                    order = sendOrderInsert(
+                        "sell",
+                        self.offerPrice,
+                        lotSizes[self.sizeIndex],
+                        function() {
+                            console.log("quoter offer trade")
+                            setTimeout(self.refreshOffer, config.quoter.refreshInterval)
                         },
-                        function()
-                        {
-                            if (order !== self.offer_order)
-                            {
-                                send_delete(order.tag, true);
+                        function() {
+                            if (order !== self.offerOrder) {
+                                sendDelete(order.tag, true)
                             }
-                        });
+                        })
                     
-                    self.offer_order = order;
+                    self.offerOrder = order
                 }
             }
-        }
-        else
-        {
-            if (self.offer_order && !self.offer_order.is_finished())
-            {
+        } else {
+            if (self.offerOrder && !self.offerOrder.isFinished()) {
                 // TODO: Really need to keep track of the orders that are actually still in the market
-                send_delete(self.offer_order.tag, true);
+                sendDelete(self.offerOrder.tag, true)
             }
         }
     }
 
-    this.change_size = function(ds)
-    {
-        self.size_index = exports.clamp(0, self.size_index + ds, lot_sizes.length - 1);
-        document.getElementById('quoter_size_display').innerHTML = lot_sizes[self.size_index];
-        self.refresh();
+    this.changeSize = function(ds) {
+        self.sizeIndex = exports.clamp(0, self.sizeIndex + ds, lotSizes.length - 1)
+        document.getElementById("quoterSizeDisplay").innerHTML = lotSizes[self.sizeIndex]
+        self.refresh()
     }
 
-    this.update_display = function()
-    {
-        document.getElementById('quoter_on_display').innerHTML = self.on;
-        document.getElementById('quoter_offset_display').innerHTML = dbl.to_string(self.offset.get());
-        document.getElementById('quoter_size_display').innerHTML = lot_sizes[self.size_index];
+    this.updateDisplay = function() {
+        document.getElementById("quoterOnDisplay").innerHTML = self.on
+        document.getElementById("quoterOffsetDisplay").innerHTML = dbl.toString(self.offset.get())
+        document.getElementById("quoterSizeDisplay").innerHTML = lotSizes[self.sizeIndex]
     }
 
-    this.bid_price = this.calculate_bid_price();
-    this.offer_price = this.calculate_offer_price();
+    this.bidPrice = this.calculateBidPrice()
+    this.offerPrice = this.calculateOfferPrice()
 }

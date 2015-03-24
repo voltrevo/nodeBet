@@ -1,305 +1,263 @@
-'use strict';
+"use strict"
 
-var assert = require('assert');
-var structs = require('./structs');
+var assert = require("assert")
+var structs = require("./structs")
 
-var price_update = structs.price_update;
+var priceUpdate = structs.priceUpdate
 
 // TODO: Pass this in?
-var tolerance = 0.0000001;
+var tolerance = 0.0000001
 
-exports.instrument = function(args)
-{
-    var self = this;
+exports.instrument = function(args) {
+    var self = this
     
-    this.name = args.name;
-    this.min = args.tick_table.bottom_price;
-    this.max = args.tick_table.top_price;
-    this.tick_size = args.tick_table.tick_size;
-    this.price_update_callback = args.price_update_callback;
+    this.name = args.name
+    this.min = args.tickTable.bottomPrice
+    this.max = args.tickTable.topPrice
+    this.tickSize = args.tickTable.tickSize
+    this.priceUpdateCallback = args.priceUpdateCallback
     
-    this.last_level_index = (args.max - args.min) / args.tick_size;
+    this.lastLevelIndex = (args.max - args.min) / args.tickSize
     
-    this.levels = [];
-    this.best_bid_level = null;
-    this.best_offer_level = null;
+    this.levels = []
+    this.bestBidLevel = null
+    this.bestOfferLevel = null
     
     // TODO: Still applicable?
     // TODO: Implement close() method for settlement
     
-    this.description = args.description;
+    this.description = args.description
     
-    this.get_all_prices = function(cb)
-    {
-        for (var i in this.levels)
-        {
-            var net_volume = this.levels[i].bid_volume - this.levels[i].offer_volume;
+    this.getAllPrices = function(cb) {
+        for (var i in this.levels) {
+            var netVolume = this.levels[i].bidVolume - this.levels[i].offerVolume
             
-            if (net_volume !== 0)
-            {
-                cb(new price_update(
+            if (netVolume !== 0) {
+                cb(new priceUpdate(
                     this.levels[i].price,
-                    net_volume)); // TODO: this is an awful pattern... this function is actually synchronous
+                    netVolume)) // TODO: this is an awful pattern... this function is actually synchronous
             }
         }
     }
     
-    function level(price)
-    {
-        this.price = price;
-        this.bids = [];
-        this.offers = [];
-        this.bid_volume = 0;
-        this.offer_volume = 0;
+    function level(price) {
+        this.price = price
+        this.bids = []
+        this.offers = []
+        this.bidVolume = 0
+        this.offerVolume = 0
         
-        this.trade_with_order = function(o)
-        {
-            assert(this.bids.length === 0 || this.offers.length === 0, 'A level should contain only bids or only offers.');
+        this.tradeWithOrder = function(o) {
+            assert(this.bids.length === 0 || this.offers.length === 0, "A level should contain only bids or only offers.")
             
-            switch (o.side)
-            {
-                case 'buy':
-                    
-                    if (this.offers.length !== 0)
-                    {
-                        var total_volume_traded = 0;
+            var totalVolumeTraded
+            var volumeTraded
+
+            switch (o.side) {
+                case "buy":
+                    if (this.offers.length !== 0) {
+                        totalVolumeTraded = 0
                         
-                        while (o.volume_remaining !== 0 && this.offers.length !== 0)
-                        {
-                            var volume_traded = Math.min(o.volume_remaining, this.offers[0].volume_remaining);
-                            total_volume_traded += volume_traded;
+                        while (o.volumeRemaining !== 0 && this.offers.length !== 0) {
+                            volumeTraded = Math.min(o.volumeRemaining, this.offers[0].volumeRemaining)
+                            totalVolumeTraded += volumeTraded
                             
-                            o.trade(this.price, volume_traded);
-                            this.offers[0].trade(this.price, volume_traded);
+                            o.trade(this.price, volumeTraded)
+                            this.offers[0].trade(this.price, volumeTraded)
                             
-                            if (this.offers[0].volume_remaining === 0)
-                            {
-                                this.offers.shift();
+                            if (this.offers[0].volumeRemaining === 0) {
+                                this.offers.shift()
                             }
                         }
                         
-                        this.offer_volume -= total_volume_traded;
-                        self.price_update_callback(new price_update(this.price, -this.offer_volume));
+                        this.offerVolume -= totalVolumeTraded
+                        self.priceUpdateCallback(new priceUpdate(this.price, -this.offerVolume))
                         
                         assert(
-                            o.volume_remaining === 0 || this.offers.length === 0,
-                            'The bid still has volume remaining, so there shouldn\'t be any offers left.');
+                            o.volumeRemaining === 0 || this.offers.length === 0,
+                            "The bid still has volume remaining, so there shouldn\"t be any offers left.")
                     }
                     
-                    break;
+                    break
                 
-                case 'sell':
-                    
-                    if (this.bids.length !== 0)
-                    {
-                        var total_volume_traded = 0;
+                case "sell":
+                    if (this.bids.length !== 0) {
+                        totalVolumeTraded = 0
                         
-                        while (o.volume_remaining !== 0 && this.bids.length !== 0)
-                        {
-                            var volume_traded = Math.min(o.volume_remaining, this.bids[0].volume_remaining);
-                            total_volume_traded += volume_traded;
+                        while (o.volumeRemaining !== 0 && this.bids.length !== 0) {
+                            volumeTraded = Math.min(o.volumeRemaining, this.bids[0].volumeRemaining)
+                            totalVolumeTraded += volumeTraded
                             
-                            o.trade(this.price, volume_traded);
-                            this.bids[0].trade(this.price, volume_traded);
+                            o.trade(this.price, volumeTraded)
+                            this.bids[0].trade(this.price, volumeTraded)
                             
-                            if (this.bids[0].volume_remaining === 0)
-                            {
-                                this.bids.shift();
+                            if (this.bids[0].volumeRemaining === 0) {
+                                this.bids.shift()
                             }
                         }
                         
-                        this.bid_volume -= total_volume_traded;
-                        self.price_update_callback(new price_update(this.price, this.bid_volume));
+                        this.bidVolume -= totalVolumeTraded
+                        self.priceUpdateCallback(new priceUpdate(this.price, this.bidVolume))
                         
                         assert(
-                            o.volume_remaining === 0 || this.bids.length === 0,
-                            'The offer still has volume remaining, so there shouldn\'t be any bids left.');
+                            o.volumeRemaining === 0 || this.bids.length === 0,
+                            "The offer still has volume remaining, so there shouldn\"t be any bids left.")
                     }
                     
-                    break;
+                    break
                     
                 default:
-                    assert(false, 'Order has invalid side: ' + o.side);
+                    assert(false, "Order has invalid side: " + o.side)
             }
         }
         
-        this.add = function(o)
-        {
-            switch (o.side)
-            {
-                case 'buy':
+        this.add = function(o) {
+            switch (o.side) {
+                case "buy": 
+                    this.bids.push(o)
+                    this.bidVolume += o.volumeRemaining
+                    self.priceUpdateCallback(new priceUpdate(this.price, this.bidVolume))
                     
-                    this.bids.push(o);
-                    this.bid_volume += o.volume_remaining;
-                    self.price_update_callback(new price_update(this.price, this.bid_volume));
-                    
-                    break;
+                    break
                 
-                case 'sell':
+                case "sell":
                     
-                    this.offers.push(o);
-                    this.offer_volume += o.volume_remaining;
-                    self.price_update_callback(new price_update(this.price, -this.offer_volume));
+                    this.offers.push(o)
+                    this.offerVolume += o.volumeRemaining
+                    self.priceUpdateCallback(new priceUpdate(this.price, -this.offerVolume))
                     
-                    break;
+                    break
                 
                 default:
-                    assert(false, 'Order has invalid side: ' + o.side);
+                    assert(false, "Order has invalid side: " + o.side)
             }
         }
     }
     
-    var limit = (self.max - self.min) / self.tick_size;
-    for (var i = 0; i <= limit; i++)
-    {
-        this.levels.push(new level(self.min + i * self.tick_size));
+    var limit = (self.max - self.min) / self.tickSize
+    for (var i = 0; i <= limit; i++) {
+        this.levels.push(new level(self.min + i * self.tickSize))
     }
 
-    this.check_price = function(price)
-    {
-        var level_index = Math.round((price - self.min) / self.tick_size);
-        return Math.abs(level_index - Math.round(level_index)) < tolerance;
+    this.checkPrice = function(price) {
+        var levelIndex = Math.round((price - self.min) / self.tickSize)
+        return Math.abs(levelIndex - Math.round(levelIndex)) < tolerance
     }
     
-    this.price_to_level_index = function(price)
-    {
-        var result = Math.round((price - self.min) / self.tick_size / tolerance) * tolerance;
-        return result;
+    this.priceToLevelIndex = function(price) {
+        var result = Math.round((price - self.min) / self.tickSize / tolerance) * tolerance
+        return result
     }
     
-    this.lookup_level = function(price)
-    {
-        var result = this.levels[this.price_to_level_index(price)];
-        return result;
+    this.lookupLevel = function(price) {
+        var result = this.levels[this.priceToLevelIndex(price)]
+        return result
     }
     
-    this.process_order = function(o)
-    {
+    this.processOrder = function(o) {
+        var index
+
         switch (o.side)
         {
-            case 'buy':
-                
-                while (this.best_offer_level && o.price + tolerance >= this.best_offer_level.price)
+            case "buy":
+                while (this.bestOfferLevel && o.price + tolerance >= this.bestOfferLevel.price)
                 {
-                    this.best_offer_level.trade_with_order(o);
+                    this.bestOfferLevel.tradeWithOrder(o)
                     
-                    if (this.best_offer_level.offers.length !== 0)
-                    {
-                        break;
+                    if (this.bestOfferLevel.offers.length !== 0) {
+                        break
                     }
                     
-                    var index = this.price_to_level_index(this.best_offer_level.price) + 1;
-                    this.best_offer_level = null;
+                    index = this.priceToLevelIndex(this.bestOfferLevel.price) + 1
+                    this.bestOfferLevel = null
                     
-                    while (index <= this.last_level_index)
-                    {
-                        if (this.levels[index].offers.length > 0)
-                        {
-                            this.best_offer_level = this.levels[index];
-                            break;
+                    while (index <= this.lastLevelIndex) {
+                        if (this.levels[index].offers.length > 0) {
+                            this.bestOfferLevel = this.levels[index]
+                            break
                         }
                         
-                        index++;
+                        index++
                     }
                 }
                 
-                if (o.volume_remaining > 0)
-                {
-                    this.lookup_level(o.price).add(o); // TODO: dbl module would be useful here?
+                if (o.volumeRemaining > 0) {
+                    this.lookupLevel(o.price).add(o); // TODO: dbl module would be useful here?
                     
-                    if (this.best_bid_level)
-                    {
-                        if (o.price > this.best_bid_level.price + tolerance)
-                        {
-                            this.best_bid_level = this.lookup_level(o.price);
+                    if (this.bestBidLevel) {
+                        if (o.price > this.bestBidLevel.price + tolerance) {
+                            this.bestBidLevel = this.lookupLevel(o.price)
                         }
-                    }
-                    else
-                    {
-                        this.best_bid_level = this.lookup_level(o.price);
+                    } else {
+                        this.bestBidLevel = this.lookupLevel(o.price)
                     }
                 }
                 
-                break;
+                break
             
-            case 'sell':
-                
-                while (this.best_bid_level && o.price - tolerance <= this.best_bid_level.price)
+            case "sell":
+                while (this.bestBidLevel && o.price - tolerance <= this.bestBidLevel.price)
                 {
-                    this.best_bid_level.trade_with_order(o);
+                    this.bestBidLevel.tradeWithOrder(o)
                     
-                    if (this.best_bid_level.bids.length !== 0)
-                    {
-                        break;
+                    if (this.bestBidLevel.bids.length !== 0) {
+                        break
                     }
                     
-                    var index = this.price_to_level_index(this.best_bid_level.price) - 1;
-                    this.best_bid_level = null;
+                    index = this.priceToLevelIndex(this.bestBidLevel.price) - 1
+                    this.bestBidLevel = null
                     
-                    while (index >= 0)
-                    {
-                        if (this.levels[index].bids.length > 0)
-                        {
-                            this.best_bid_level = this.levels[index];
-                            break;
+                    while (index >= 0) {
+                        if (this.levels[index].bids.length > 0) {
+                            this.bestBidLevel = this.levels[index]
+                            break
                         }
                         
-                        index--;
+                        index--
                     }
                 }
                 
-                if (o.volume_remaining > 0)
-                {
-                    this.lookup_level(o.price).add(o);
+                if (o.volumeRemaining > 0) {
+                    this.lookupLevel(o.price).add(o)
                     
-                    if (this.best_offer_level)
-                    {
-                        if (o.price < this.best_offer_level.price - tolerance)
-                        {
-                            this.best_offer_level = this.lookup_level(o.price);
+                    if (this.bestOfferLevel) {
+                        if (o.price < this.bestOfferLevel.price - tolerance) {
+                            this.bestOfferLevel = this.lookupLevel(o.price)
                         }
-                    }
-                    else
-                    {
-                        this.best_offer_level = this.lookup_level(o.price);
+                    } else {
+                        this.bestOfferLevel = this.lookupLevel(o.price)
                     }
                 }
                 
-                break;
+                break
             
             default:
-                assert(false, 'Order has invalid side: ' + o.side);
+                assert(false, "Order has invalid side: " + o.side)
         }
     }
     
-    this.pull_order = function(o)
-    {
-        var level = this.lookup_level(o.price);
+    this.pullOrder = function(o) {
+        var level = this.lookupLevel(o.price)
         
-        assert(o.side === 'buy' || o.side === 'sell', 'Invalid side passed to pull_order: ' + o.side);
-        var queue = (o.side === 'buy' ? level.bids : level.offers);
+        assert(o.side === "buy" || o.side === "sell", "Invalid side passed to pullOrder: " + o.side)
+        var queue = (o.side === "buy" ? level.bids : level.offers)
         
-        for (var i in queue)
-        {
-            if (o === queue[i])
-            {
-                queue.splice(i, 1)[0];
+        for (var i in queue) {
+            if (o === queue[i]) {
+                queue.splice(i, 1)[0]
                 
-                if (o.side === 'buy')
-                {
-                    level.bid_volume -= o.volume_remaining;
-                    self.price_update_callback(new price_update(o.price, level.bid_volume));
-                }
-                else
-                {
-                    level.offer_volume -= o.volume_remaining;
-                    self.price_update_callback(new price_update(o.price, -level.offer_volume));
+                if (o.side === "buy") {
+                    level.bidVolume -= o.volumeRemaining
+                    self.priceUpdateCallback(new priceUpdate(o.price, level.bidVolume))
+                } else {
+                    level.offerVolume -= o.volumeRemaining
+                    self.priceUpdateCallback(new priceUpdate(o.price, -level.offerVolume))
                 }
                 
-                return true;
+                return true
             }
         }
         
-        return false;
+        return false
     }
 }

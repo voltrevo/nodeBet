@@ -1,100 +1,82 @@
-'use strict';
+"use strict"
 
 // TODO: better browser support
 
-exports.rand_hex = function()
-{
-    var digits = '0123456789abcdef';
-    var result = '';
+exports.randHex = function() {
+    var digits = "0123456789abcdef"
+    var result = ""
     
-    for (var i = 0; i !== 64; i++)
-    {
-        result += digits[Math.floor(Math.random() * digits.length)];
+    for (var i = 0; i !== 64; i++) {
+        result += digits[Math.floor(Math.random() * digits.length)]
     }
     
-    return result;
+    return result
 }
 
-exports.accumulator_map = function()
-{
-    var self = this;
+exports.accumulatorMap = function() {
+    var self = this
 
-    this.values = {};
+    this.values = {}
 
-    this.add = function(key, amount)
-    {
-        if (!self.values[key])
-        {
-            self.values[key] = amount;
-        }
-        else
-        {
-            self.values[key] += amount;
+    this.add = function(key, amount) {
+        if (!self.values[key]) {
+            self.values[key] = amount
+        } else {
+            self.values[key] += amount
             
-            if (self.values[key] === 0)
-            {
-                delete self.values[key];
+            if (self.values[key] === 0) {
+                delete self.values[key]
             }
         }
     }
 
-    this.get = function(key)
-    {
-        return self.values[key] || 0;
+    this.get = function(key) {
+        return self.values[key] || 0
     }
 
-    this.pop = function(key)
-    {
-        var ret = self.get();
-        delete self.values[key];
+    this.pop = function(key) {
+        var ret = self.get()
+        delete self.values[key]
         
-        return ret;
+        return ret
     }
 }
 
-exports.clone = function(obj) // TODO: test
-{
-    if (typeof obj === 'object')
-    {
-        if (Array.isArray(obj))
-        {
-            var arr = [];
+// TODO: test
+exports.clone = function(obj) {
+    if (typeof obj === "object") {
+        if (Array.isArray(obj)) {
+            var arr = []
 
-            for (var i in obj)
-            {
-                arr.push(exports.clone(obj[i]));
+            for (var i in obj) {
+                arr.push(exports.clone(obj[i]))
             }
 
-            return arr;
+            return arr
         }
         
-        if (obj === null)
-        {
-            return null;
+        if (obj === null) {
+            return null
         }
 
-        var result = {};
+        var result = {}
 
-        for (var key in result)
-        {
-            result[key] = exports.clone(obj[key]);
+        for (var key in result) {
+            result[key] = exports.clone(obj[key])
         }
     }
     
-    return obj;
+    return obj
 }
 
-exports.clamp = function(min, x, max)
-{
-    if (x < min)
-    {
-        return min;
+exports.clamp = function(min, x, max) {
+    if (x < min) {
+        return min
     }
     
-    if (x > max)
-    {
-        return max;
+    if (x > max) {
+        return max
     }
     
-    return x;
+    return x
 }
