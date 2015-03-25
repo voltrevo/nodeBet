@@ -1,4 +1,5 @@
 stuff
 *.log
+*.log.*
 users.json
 node_modules
