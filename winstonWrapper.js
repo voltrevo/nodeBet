@@ -10,9 +10,12 @@ log.remove(log.transports.Console)
 config.loggers.forEach(function(logger) {
     // Construct custom formatter from timeFormat if specified
     if (logger.options.timeFormat) {
+        var timeFormat = logger.options.timeFormat
+        delete logger.options.timeFormat
+        
         logger.options.formatter = function(options) {
             return (
-                moment().format(logger.options.timeFormat) +
+                moment().format(timeFormat) +
                 " [" +
                 options.level +
                 "] " +
