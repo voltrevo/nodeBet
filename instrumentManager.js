@@ -21,7 +21,6 @@ exports.instrumentManager = function(args) {
     this.instrument = null
     this.adminUname = args.adminUname // TODO: what"s with this "uname" thing?
     this.subscriptions = {}
-    this.oncancels = {} // TODO: when cleaning up, need to call all these with null
     this.orders = {}
     this.userPositions = {}
     
@@ -99,10 +98,6 @@ exports.instrumentManager = function(args) {
                 } else {
                     log.info("Received cancel for no longer active order " + order.tag)
                 }
-                
-                /* TODO: sockception doesn"t know about closing
-                orderInsert.close()
-                */
             }
         }
         
@@ -120,10 +115,6 @@ exports.instrumentManager = function(args) {
 
     this.subscribe = function(user, sub) {
         self.subscriptions[user.uname] = sub
-        
-        self.oncancels[user.uname] = function() {
-            sub.close()
-        }
         
         if (self.userPositions[user.uname]) {
             sub.route("positionUpdate").send(self.userPositions[user.uname])
@@ -152,12 +143,9 @@ exports.instrumentManager = function(args) {
             })
         }
         
-        /* TODO: sockception doesn"t know about closing
         sub.onclose(function() {
             delete self.subscriptions[user.uname]
-            delete self.oncancels[user.uname]
         })
-        */
     }
 
     this.open = function(description, tickTable) {

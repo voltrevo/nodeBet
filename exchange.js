@@ -19,7 +19,10 @@ exports.exchange = new (function() {
 
     this.config = config.exchange
     
-    this.wss = sockception.listen({port: self.config.port})
+    this.wss = sockception.listen({
+        port: self.config.port,
+        log: log
+    })
 
     this.usersDb = JSON.parse(fs.readFileSync(self.config.usersFile))
     
@@ -39,8 +42,7 @@ exports.exchange = new (function() {
     
     this.instruments = {
         testInstrument: new instrumentManager({
-            instrumentParams:
-            {
+            instrumentParams: {
                 name: "testInstrument",
             },
             adminUname: "andrew.morris",
@@ -121,7 +123,7 @@ exports.exchange = new (function() {
                 return
             }
 
-            /* TODO: sockception doesn"t know about closing
+            /* TODO: sockception doesn't know about closing
             client.close() // Note this only closes this socket, not the full/outer socket, so long as other subsockets are open
             */
 
@@ -155,7 +157,7 @@ exports.exchange = new (function() {
             
             self.writeUsersDb()
 
-            /* TODO: sockception doesn"t know about closing
+            /* TODO: sockception doesn't know about closing
             client.close() // Note this only closes this socket, not the full/outer socket, so long as other subsockets are open
             */
 
@@ -181,16 +183,16 @@ exports.exchange = new (function() {
         
         // TODO: heartbeats
         
-        /* TODO: sockception doesn"t know about closing
-        user.socket.onclose(function() {
+        user.sock.onclose(function() {
             for (var tag in user.orders)
             {
                 user.orders[tag].pull()
             }
             
-            delete self.users[uname]
+            delete self.users[user.uname]
+
+            log.info(user.uname + " logged out")
         })
-        */
         
         user.sock.route("chat").receive(function(chat) {
             // TODO: Recent messages
@@ -323,7 +325,7 @@ exports.exchange = new (function() {
                 return
             }
             
-            if (instrument.subscriptions.hasOwnProperty(user.uname)) {
+            if (instrument.subscriptions[user.uname]) {
                 err.send("Already subscribed")
                 return
             }
@@ -355,15 +357,5 @@ exports.exchange = new (function() {
         user.sock.route("ping").receive(function(ping) {
             ping.send("pong")
         })
-
-        /* TODO: should there still be a way to do this? (probably)
-        user.router.default(function(msg) {
-            log.error(
-                "Received message for unknown route: " +
-                user.router.impl.transform(msg.value) +
-                ", available routes:" +
-                JSON.stringify(Object.keys(user.router.impl.routes)))
-        })
-        */
     }
 })()

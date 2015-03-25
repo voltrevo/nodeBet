@@ -6,7 +6,7 @@
                 "level": "debug",
                 "filename": "exchange.log",
                 "tailable": true,
-                //"handleExceptions": true,
+                "handleExceptions": true,
                 "json": false,
                 "timeFormat": "YYYY-MM-DD HH:mm:ss.SSS Z"
             }

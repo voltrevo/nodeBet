@@ -667,7 +667,7 @@ function login() {
     var sockConnectedAtStart = !!sock
 
     if (!sock) {
-        sock = sockception.connect("ws://" + config.host + ":" + config.port + "/")
+        sock = sockception.connect("ws://" + config.host + ":" + config.port + "/", log)
 
         // TODO: don"t use impl / expose this kind of thing properly
         sock.impl.factory.log = function() {
