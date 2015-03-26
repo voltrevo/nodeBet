@@ -8,7 +8,7 @@ var config
 var dbl
 var isMarketOpen
 var ldr
-var log
+var log // TODO: log.info doesn't work here??
 var lotSizes
 var observable
 var sendDelete
@@ -158,7 +158,7 @@ function quoter()
                     },
                     function() {
                         if (order !== self.bidOrder) {
-                            sendDelete(order.tag, true)
+                            sendDelete(order, true)
                         }
                     })
                 
@@ -173,7 +173,7 @@ function quoter()
             } else {
                 // Need float comparison functions
                 if (dbl.equal(self.bidOrder.price, self.bidPrice) || self.bidOrder.volume !== lotSizes[self.sizeIndex]) {
-                    sendDelete(self.bidOrder.tag, true)
+                    sendDelete(self.bidOrder, true)
                     
                     order = sendOrderInsert(
                         "buy",
@@ -185,7 +185,7 @@ function quoter()
                         },
                         function() {
                             if (order !== self.bidOrder) {
-                                sendDelete(order.tag, true)
+                                sendDelete(order, true)
                             }
                         })
                     
@@ -195,7 +195,7 @@ function quoter()
         } else {
             if (self.bidOrder && !self.bidOrder.isFinished()) {
                 // TODO: Really need to keep track of the orders that are actually still in the market
-                sendDelete(self.bidOrder.tag, true)
+                sendDelete(self.bidOrder, true)
             }
         }
     }
@@ -213,32 +213,32 @@ function quoter()
                     self.offerPrice,
                     lotSizes[self.sizeIndex],
                     function() {
-                        console.log("quoter offer trade")
+                        log.info("quoter offer trade")
                         setTimeout(self.refreshOffer, config.quoter.refreshInterval)
                     },
                     function() {
                         if (order !== self.offerOrder)
                         {
-                            sendDelete(order.tag, true)
+                            sendDelete(order, true)
                         }
                     })
                 
                 self.offerOrder = order
             } else {
                 if (dbl.equal(self.offerOrder.price, self.offerPrice) || self.offerOrder.volume !== lotSizes[self.sizeIndex]) {
-                    sendDelete(self.offerOrder.tag, true)
+                    sendDelete(self.offerOrder, true)
                     //self.offerOrder = sendOrderInsert("sell", self.offerPrice, lotSizes[self.sizeIndex])
                     order = sendOrderInsert(
                         "sell",
                         self.offerPrice,
                         lotSizes[self.sizeIndex],
                         function() {
-                            console.log("quoter offer trade")
+                            log.info("quoter offer trade")
                             setTimeout(self.refreshOffer, config.quoter.refreshInterval)
                         },
                         function() {
                             if (order !== self.offerOrder) {
-                                sendDelete(order.tag, true)
+                                sendDelete(order, true)
                             }
                         })
                     
@@ -248,7 +248,7 @@ function quoter()
         } else {
             if (self.offerOrder && !self.offerOrder.isFinished()) {
                 // TODO: Really need to keep track of the orders that are actually still in the market
-                sendDelete(self.offerOrder.tag, true)
+                sendDelete(self.offerOrder, true)
             }
         }
     }

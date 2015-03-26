@@ -16,6 +16,7 @@ var utils // TODO: misnaming: this comes from util.js
 var theo
 var isMarketOpen
 var ldr
+var log
 var lotSizes
 var sendOrderInsert
 var sendDelete
@@ -25,7 +26,7 @@ var sendDelete
     // TODO: fix global area pollution
     var app = {}
     app.log = new exports.logger("debug")
-    var log = app.log
+    log = app.log
 
     var randHex = exports.randHex
     var clamp = exports.clamp
@@ -306,7 +307,7 @@ var sendDelete
         order.webElements.removeCell.innerHTML = "x"
         
         order.webElements.removeCell.onclick = function() {
-            sendDelete(order.tag, false)
+            sendDelete(order, false)
         }
         
         for (var key in order.webElements) {
@@ -356,9 +357,7 @@ var sendDelete
         tradeElements = []
     }
 
-    sendDelete = function(tag, fromQuoter) {
-        var order = orders[tag]
-
+    sendDelete = function(order, fromQuoter) {
         // TODO: make better
         if (!fromQuoter) {
             if (order === qr.bidOrder || order === qr.offerOrder) {
@@ -366,7 +365,6 @@ var sendDelete
             }
         }
         
-        //console.log("sendDelete(\"" + tag + "\")")
         if (order && order.orderStatus !== "deleting" && order.orderStatus !== "deleted") {
             //console.log("actually sendDelete(\"" + tag + "\"), status: " + orders[tag].orderStatus)
             
@@ -374,14 +372,14 @@ var sendDelete
             order.webElements.statusCell.innerHTML = "deleting"
             
             // TODO: argh why sock and not order.sock?
-            var orderDelete = sock.route("orderDelete").send(tag)
+            var del = order.sock.route("delete").send()
 
-            orderDelete.route("success").receiveOne(function() {
+            del.route("success").receiveOne(function() {
                 handleOrderDeleted(order)
             })
 
-            orderDelete.route("failure").receiveOne(function() {
-                console.log("Tried to delete order not found at exchange (probably traded)")
+            del.route("failure").receiveOne(function() {
+                log.info("Tried to delete order not found at exchange (maybe traded)")
             })
         }
     }
@@ -597,7 +595,7 @@ var sendDelete
     function massDelete() {
         //peer.get("massDelete", null, {}) // Currently ignoring ack
         for (var tag in orders) {
-            sendDelete(parseInt(tag), false)
+            sendDelete(orders[tag], false)
         }
     }
 

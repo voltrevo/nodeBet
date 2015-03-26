@@ -81,12 +81,6 @@ exports.instrumentManager = function(args) {
                 
                 order.volumeRemaining -= v
                 assert(order.volumeRemaining >= 0)
-                
-                if (order.volumeRemaining === 0) {
-                    /* TODO: sockception doesn"t know about closing
-                    orderInsert.close()
-                    */
-                }
             },
             pull: function() {
                 var success = (self.instrument ? self.instrument.pullOrder(order) : false)
@@ -96,7 +90,7 @@ exports.instrumentManager = function(args) {
                     delete self.orders[order.tag]
                     delete user.orders[order.tag]
                 } else {
-                    log.info("Received cancel for no longer active order " + order.tag)
+                    log.info("Received delete for no longer active order " + order.tag)
                 }
             }
         }
@@ -104,8 +98,13 @@ exports.instrumentManager = function(args) {
         self.orders[order.tag] = order
         user.orders[order.tag] = order
 
-        orderInsert.route("cancel").receiveOne(function() {
-            order.pull()
+        orderInsert.route("delete").receiveOne(function(del) {
+            if (self.orders[order.tag]) {
+                order.pull()
+                del.route("success").send()
+            } else {
+                del.route("failure").send()
+            }
         })
         
         orderInsert.route("tag").send(order.tag)

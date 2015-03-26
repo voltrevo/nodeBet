@@ -243,17 +243,6 @@ module.exports = function exchange(config, usersDbHandle, wss) {
             instrument.orderInsert(user, orderInsert)
         })
         
-        user.sock.route("orderDelete").receiveMany(function(orderDelete) { // TODO: use the delete route on the order instead
-            var order = user.orders[orderDelete.value]
-            
-            if (order) {
-                order.pull()
-                orderDelete.route("success").send()
-            } else {
-                orderDelete.route("failure").send()
-            }
-        })
-        
         user.sock.route("openInstrument").receiveMany(function(openInstrument) {
             var instrument = self.instruments[openInstrument.value.instrumentName]
             var err = openInstrument.route("error")
