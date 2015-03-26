@@ -45,18 +45,6 @@ module.exports = function exchange(config, usersDbHandle, wss) {
     
     this.wss.receiveMany(function(client) {
         log.info("New client")
-
-        // TODO: don"t use impl / expose this kind of thing properly
-        client.impl.factory.log = function() {
-            var str = ""
-            for (var i = 0; i !== arguments.length; i++) {
-                if (i !== 0) {
-                    str += " "
-                }
-                str += util.inspect(arguments[i], false, null)
-            }
-            log.debug("sockception: " + str)
-        }
         
         client.send("connected")
         

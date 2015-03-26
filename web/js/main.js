@@ -603,18 +603,6 @@ var sendDelete
 
         if (!sock) {
             sock = sockception.connect("ws://" + config.host + ":" + config.port + "/", log)
-
-            // TODO: don"t use impl / expose this kind of thing properly
-            sock.impl.factory.log = function() {
-                var str = ""
-                for (var i = 0; i !== arguments.length; i++) {
-                    if (i !== 0) {
-                        str += " "
-                    }
-                    str += JSON.stringify(arguments[i])
-                }
-                console.debug("sockception: " + str)
-            }
         }
         
         var run = function() {
