@@ -84,8 +84,6 @@ var observable
 var sockception
 var utils // TODO: misnaming: this comes from util.js
 
-var once = sockception.util.once
-
 // TODO: fix global area pollution
 var app = {}
 app.log = new exports.logger("debug")
@@ -905,7 +903,7 @@ function handleLogin(newSocket) {
         },
         500)
     
-    setInterval(
+    var pingInterval = setInterval(
         function() {
             var sendTime = new Date()
 
@@ -914,6 +912,10 @@ function handleLogin(newSocket) {
             })
         },
         10000)
+
+    sock.onclose(function() {
+        clearInterval(pingInterval)
+    })
 }
 
 function createLoginRequests()
