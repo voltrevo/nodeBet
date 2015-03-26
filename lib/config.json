@@ -4,7 +4,7 @@
             "transport": "DailyRotateFile",
             "options": {
                 "level": "debug",
-                "filename": "exchange.log",
+                "filename": "log/exchange.log",
                 "tailable": true,
                 "handleExceptions": true,
                 "json": false,
@@ -18,6 +18,6 @@
             "secret": "2b85e613f31d0dfa35d09b9d1fdb38882df6e5da679d4dbf1e40569239a43565",
             "initialCash": 100
         },
-        "usersFile": "users.json"
+        "usersFile": "lib/users.json"
     }
 }
