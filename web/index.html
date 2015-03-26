@@ -2,7 +2,7 @@
 <head>
 <title>Node Bet</title>
 
-<link rel="favicon reloader" href="/favicon.ico?v=2" />
+<link rel="favicon reloader" href="/favicon.ico?v=3" />
 
 <style>
 .noSelect {
@@ -256,7 +256,7 @@ function sendOrderInsert(side, price, volume, tradeCb, tagCb) {
     
     order.sock = sock.route("orderInsert").send(order)
 
-    order.sock.route("tag").receive(once(function(tag) { // TODO: tags should be obsolete now
+    order.sock.route("tag").receiveOne(function(tag) { // TODO: tags should be obsolete now
         order.tag = tag.value
         orders[tag.value] = order
         
@@ -267,9 +267,9 @@ function sendOrderInsert(side, price, volume, tradeCb, tagCb) {
         if (tagCb) {
             tagCb()
         }
-    }))
+    })
 
-    order.sock.route("trade").receive(function(tradeSock) {
+    order.sock.route("trade").receiveMany(function(tradeSock, stop) {
         var trade = tradeSock.value
 
         position += (order.side === "buy" ? 1 : -1) * trade.volume
@@ -301,6 +301,8 @@ function sendOrderInsert(side, price, volume, tradeCb, tagCb) {
             order.orderStatus = "fully traded"
             order.webElements.statusCell.innerHTML = order.orderStatus
             
+            stop()
+
             setTimeout(
                 function()
                 {
@@ -315,11 +317,11 @@ function sendOrderInsert(side, price, volume, tradeCb, tagCb) {
         }
     })
 
-    order.sock.route("deleted").receive(once(function() {
+    order.sock.route("deleted").receiveOne(function() {
         handleOrderDeleted(order)
-    }))
+    })
 
-    order.sock.route("error").receive(function(error) {
+    order.sock.route("error").receiveMany(function(error) {
         order.orderStatus = "rejected"
         order.webElements.statusCell.innerHTML = "rejected"
 
@@ -328,7 +330,7 @@ function sendOrderInsert(side, price, volume, tradeCb, tagCb) {
         setTimeout(
             function()
             {
-                removeElement(order.webElements.row)
+                removeElement(order.webElements.row) // TODO: is this ok to call multiple times?
                 delete orders[order.tag]
             },
             500)
@@ -343,7 +345,9 @@ function sendOrderInsert(side, price, volume, tradeCb, tagCb) {
 
 function createOrder(order) {
     order.orderStatus = "pending"
-    order.isFinished = function() { return (order.orderStatus !== "active" && order.orderStatus !== "pending") }
+    order.isFinished = function() {
+        return (order.orderStatus !== "active" && order.orderStatus !== "pending")
+    }
     
     order.webElements = {}
     order.webElements.row = document.createElement("tr")
@@ -436,11 +440,11 @@ function sendDelete(tag, fromQuoter) {
         // TODO: argh why sock and not order.sock?
         var orderDelete = sock.route("orderDelete").send(tag)
 
-        orderDelete.route("success").receive(function() {
+        orderDelete.route("success").receiveOne(function() {
             handleOrderDeleted(order)
         })
 
-        orderDelete.route("failure").receive(function() {
+        orderDelete.route("failure").receiveOne(function() {
             console.log("Tried to delete order not found at exchange (probably traded)")
         })
     }
@@ -683,7 +687,7 @@ function login() {
     }
     
     var run = function() {
-        sock.route("clueRequest").send(username).receive(function(clue) {
+        sock.route("clueRequest").send(username).receiveOne(function(clue) {
             var startupType = getSelectorValue("startupSelector")
             
             var passwd = document.getElementById(
@@ -706,9 +710,9 @@ function login() {
                 nextDoubleHash: hexSha256(hexSha256(nextClue + newPasswd))
             })
             
-            loginRequest.route("success").receive(handleLogin)
+            loginRequest.route("success").receiveOne(handleLogin)
 
-            loginRequest.route("failure").receive(function() {
+            loginRequest.route("failure").receiveOne(function() {
                 var failureElement = (
                     getSelectorValue("startupSelector") === "login" ?
                     document.getElementById("loginPasswordInput") :
@@ -726,7 +730,7 @@ function login() {
                     500)
             })
 
-            loginRequest.route("alreadyLoggedIn").receive(function() {
+            loginRequest.route("alreadyLoggedIn").receiveOne(function() {
                 var failureElement = document.getElementById("usernameInput")
                 failureElement.value = "already logged in"
                 
@@ -743,7 +747,7 @@ function login() {
     if (sockConnectedAtStart) {
         run()
     } else {
-        sock.receive(run)
+        sock.receiveOne(run)
     }
 }
 
@@ -802,11 +806,11 @@ function handleLogin(newSocket) {
                     }
                 })
 
-                openInstrument.route("error").receive(function(s) {
+                openInstrument.route("error").receiveMany(function(s) {
                     alertify.error(s.value)
                 })
 
-                openInstrument.route("success").receive(function() {
+                openInstrument.route("success").receiveOne(function() {
                     // TODO: should something go here?
                 })
                 
@@ -830,11 +834,11 @@ function handleLogin(newSocket) {
                     value: parseFloat(price)
                 })
 
-                closeInstrument.route("error").receive(function(err) {
+                closeInstrument.route("error").receiveMany(function(err) {
                     alertify.error(err.value)
                 })
 
-                closeInstrument.route("success").receive(function() {
+                closeInstrument.route("success").receiveOne(function() {
                     // TODO: do something here?
                 })
             })
@@ -847,7 +851,7 @@ function handleLogin(newSocket) {
         regoKeyButton.type = "button"
         
         regoKeyButton.onclick = function() {
-            sock.route("clueRequest").send(username).receive(function(clue) {
+            sock.route("clueRequest").send(username).receiveOne(function(clue) {
                 unbindHotkeys()
 
                 alertify.prompt("Password", function(e, passwd) {
@@ -863,11 +867,11 @@ function handleLogin(newSocket) {
                         newUser: newUser
                     })
 
-                    rkr.route("registrationKey").receive(function(key) {
+                    rkr.route("registrationKey").receiveOne(function(key) {
                         alertify.alert(key.value)
                     })
 
-                    rkr.route("failure").receive(function() {
+                    rkr.route("failure").receiveOne(function() {
                         alertify.error("Wrong password")
                     })
                 })})
@@ -905,7 +909,7 @@ function handleLogin(newSocket) {
         function() {
             var sendTime = new Date()
 
-            sock.route("ping").send().receive(function() {
+            sock.route("ping").send().receiveOne(function() {
                 log.info("Ping time: " + (new Date() - sendTime) + "ms")
             })
         },
@@ -914,21 +918,21 @@ function handleLogin(newSocket) {
 
 function createLoginRequests()
 {
-    sock.route("cash").send().receive(once(function(cashUpdate) {
+    sock.route("cash").send().receiveOne(function(cashUpdate) {
         cash = cashUpdate.value
         document.getElementById("cashDisplay").innerHTML = formatCash(cash + instrumentCash)
         updateValuation()
-    }))
+    })
 
     chat = sock.route("chat").send()
 
-    chat.receive(function(msgInfo) {
+    chat.receiveMany(function(msgInfo) {
         addMessage(msgInfo.value.uname + ": " + msgInfo.value.msg)
     })
 
     var instrumentSubscription = sock.route("instrumentSubscription").send("testInstrument")
     
-    instrumentSubscription.route("positionUpdate").receive(function(positionUpdate) {
+    instrumentSubscription.route("positionUpdate").receiveMany(function(positionUpdate) {
         instrumentCash = positionUpdate.value.cash
         document.getElementById("cashDisplay").innerHTML = formatCash(cash + instrumentCash)
         
@@ -938,7 +942,7 @@ function createLoginRequests()
         updateValuation()
     })
 
-    instrumentSubscription.route("priceUpdate").receive(function(priceUpdate) {
+    instrumentSubscription.route("priceUpdate").receiveMany(function(priceUpdate) {
         var pu = priceUpdate.value
 
         if (pu.volume > 0) {
@@ -951,7 +955,7 @@ function createLoginRequests()
         }
     })
 
-    instrumentSubscription.route("status").receive(function(status) {
+    instrumentSubscription.route("status").receiveMany(function(status) {
         var is = status.value
         
         var isMarketOpenBefore = isMarketOpen.get()
@@ -969,7 +973,7 @@ function createLoginRequests()
         }
     })
 
-    instrumentSubscription.route("open").receive(function(open) {
+    instrumentSubscription.route("open").receiveOne(function(open) {
         var op = open.value
 
         clearTrades()
@@ -987,7 +991,7 @@ function createLoginRequests()
         document.getElementById("descriptionDisplay").innerHTML = op.description
     })
 
-    instrumentSubscription.route("close").receive(function(close) {
+    instrumentSubscription.route("close").receiveOne(function(close) {
         isMarketOpen.set(false)
         theo.set(0)
         document.getElementById("descriptionDisplay").innerHTML = "<font color=\"grey\">[Closed]</font>"
@@ -1004,11 +1008,11 @@ function createLoginRequests()
         ldr.cleanup()
     })
 
-    instrumentSubscription.route("error").receive(function(error) {
+    instrumentSubscription.route("error").receiveMany(function(error) {
         alertify.alert(error.value)
     })
 
-    instrumentSubscription.route("forceQuoterOn").receive(function() {
+    instrumentSubscription.route("forceQuoterOn").receiveMany(function() {
         qr.toggle()
     })
 }
@@ -1035,7 +1039,7 @@ function register() {
     
     var uname = document.getElementById("usernameInput").value
 
-    sock.route("clueRequest").send(uname).receive(function(clue) {
+    sock.route("clueRequest").send(uname).receiveOne(function(clue) {
         var regoKeyField = document.getElementById("registerRegistrationKeyInput")
         var nextClue = randHex()
         
@@ -1045,9 +1049,9 @@ function register() {
             nextDoubleHash: hexSha256(hexSha256(nextClue + document.getElementById("registerPasswordInput").value))
         })
 
-        registrationRequest.route("success").receive(handleLogin)
+        registrationRequest.route("success").receiveOne(handleLogin)
 
-        registrationRequest.route("failure").receive(function() {
+        registrationRequest.route("failure").receiveOne(function() {
             regoKeyField.value = "failure"
 
             setTimeout(

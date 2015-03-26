@@ -43,7 +43,7 @@ module.exports = function exchange(config, usersDbHandle, wss) {
         }) // TODO: trade ticks
     }
     
-    this.wss.receive(function(client) {
+    this.wss.receiveMany(function(client) {
         log.info("New client")
 
         // TODO: don"t use impl / expose this kind of thing properly
@@ -79,9 +79,9 @@ module.exports = function exchange(config, usersDbHandle, wss) {
             }
         }
 
-        client.route("clueRequest").receive(clueRequestHandler)
+        client.route("clueRequest").receiveMany(clueRequestHandler)
         
-        client.route("loginRequest").receive(function(loginRequest) {
+        client.route("loginRequest").receiveMany(function(loginRequest) {
             var dbUser = self.usersDb[loginRequest.value.uname]
             
             if (!dbUser) {
@@ -116,12 +116,12 @@ module.exports = function exchange(config, usersDbHandle, wss) {
                 return
             }
 
-            /* TODO: sockception doesn't know about closing
-            client.close() // Note this only closes this socket, not the full/outer socket, so long as other subsockets are open
+            /* TODO: not sure what to do here instead
+            client.close()
             */
 
             var loggedInSock = loginRequest.route("success").send()
-            loggedInSock.route("clueRequest").receive(clueRequestHandler)
+            loggedInSock.route("clueRequest").receiveMany(clueRequestHandler)
             
             self.addUser({
                 uname: loginRequest.value.uname,
@@ -129,7 +129,7 @@ module.exports = function exchange(config, usersDbHandle, wss) {
             })
         })
         
-        client.route("registrationRequest").receive(function(regReq) {
+        client.route("registrationRequest").receiveMany(function(regReq) {
             if (self.usersDb.hasOwnProperty(regState.uname)) {
                 regReq.route("failure").send()
                 return
@@ -155,7 +155,7 @@ module.exports = function exchange(config, usersDbHandle, wss) {
             */
 
             var loggedInSocket = regReq.route("success").send()
-            loggedInSocket.route("clueRequest").receive(clueRequestHandler)
+            loggedInSocket.route("clueRequest").receiveMany(clueRequestHandler)
             
             self.addUser({
                 uname: regState.uname,
@@ -187,17 +187,18 @@ module.exports = function exchange(config, usersDbHandle, wss) {
             log.info(user.uname + " logged out")
         })
         
-        user.sock.route("chat").receive(function(chat) {
+        user.sock.route("chat").receiveMany(function(chat) {
             // TODO: Recent messages
+            if (self.chatSubscriptions[user.uname]) {
+                self.chatSubscriptions[user.uname].route("close").send()
+            }
             self.chatSubscriptions[user.uname] = chat; // TODO: chatSubscriptions -> chatSockets
             
-            /* TODO: sockception doesn"t know about closing
             chat.onclose(function() {
                 delete self.chatSubscriptions[user.uname]
             })
-            */
 
-            chat.receive(function(msg) {
+            chat.receiveMany(function(msg) { // TODO: might be a good use case for branch/chop
                 for (var uname in self.chatSubscriptions)
                 {
                     self.chatSubscriptions[uname].send({
@@ -208,7 +209,7 @@ module.exports = function exchange(config, usersDbHandle, wss) {
             })
         })
         
-        user.sock.route("massDelete").receive(function(massDelete) {
+        user.sock.route("massDelete").receiveMany(function(massDelete) {
             for (var tag in user.orders) {
                 user.orders[tag].pull()
             }
@@ -216,7 +217,7 @@ module.exports = function exchange(config, usersDbHandle, wss) {
             massDelete.send("done")
         })
         
-        user.sock.route("registrationKeyRequest").receive(function(rkr) {
+        user.sock.route("registrationKeyRequest").receiveMany(function(rkr) {
             if (hexSha256(rkr.value.hash) === user.dbRecord.doubleHash) {
                 user.dbRecord.doubleHash = rkr.value.nextDoubleHash
                 user.dbRecord.clue = rkr.value.nextClue
@@ -231,7 +232,7 @@ module.exports = function exchange(config, usersDbHandle, wss) {
             }
         })
         
-        user.sock.route("orderInsert").receive(function(orderInsert) {
+        user.sock.route("orderInsert").receiveMany(function(orderInsert) {
             var instrument = self.instruments[orderInsert.value.instrumentName]
             
             if (!instrument) {
@@ -242,7 +243,7 @@ module.exports = function exchange(config, usersDbHandle, wss) {
             instrument.orderInsert(user, orderInsert)
         })
         
-        user.sock.route("orderDelete").receive(function(orderDelete) {
+        user.sock.route("orderDelete").receiveMany(function(orderDelete) { // TODO: use the delete route on the order instead
             var order = user.orders[orderDelete.value]
             
             if (order) {
@@ -253,7 +254,7 @@ module.exports = function exchange(config, usersDbHandle, wss) {
             }
         })
         
-        user.sock.route("openInstrument").receive(function(openInstrument) {
+        user.sock.route("openInstrument").receiveMany(function(openInstrument) {
             var instrument = self.instruments[openInstrument.value.instrumentName]
             var err = openInstrument.route("error")
             
@@ -279,7 +280,7 @@ module.exports = function exchange(config, usersDbHandle, wss) {
                 openInstrument.value.tickTable)
         })
         
-        user.sock.route("closeInstrument").receive(function(closeInstrument) {
+        user.sock.route("closeInstrument").receiveMany(function(closeInstrument) { // TODO: use the instrument message!
             var instrument = self.instruments[closeInstrument.value.instrumentName]
             var err = closeInstrument.route("error")
             
@@ -309,7 +310,7 @@ module.exports = function exchange(config, usersDbHandle, wss) {
             instrument.close(closeInstrument.value.value) // TODO: value -> price?
         })
         
-        user.sock.route("instrumentSubscription").receive(function(sub) {
+        user.sock.route("instrumentSubscription").receiveMany(function(sub) {
             var instrument = self.instruments[sub.value]
             var err = sub.route("error")
 
@@ -326,11 +327,11 @@ module.exports = function exchange(config, usersDbHandle, wss) {
             instrument.subscribe(user, sub)
         })
         
-        user.sock.route("cash").receive(function(cash) {
+        user.sock.route("cash").receiveMany(function(cash) {
             cash.send(user.dbRecord.cash)
         })
         
-        user.sock.route("forceQuotersOn").receive(function(fqo) {
+        user.sock.route("forceQuotersOn").receiveMany(function(fqo) {
             var instrument = self.instruments[fqo.value]
             var err = fqo.route("error")
 
@@ -347,7 +348,7 @@ module.exports = function exchange(config, usersDbHandle, wss) {
             instrument.forceQuotersOn()
         })
         
-        user.sock.route("ping").receive(function(ping) {
+        user.sock.route("ping").receiveMany(function(ping) {
             ping.send("pong")
         })
     }

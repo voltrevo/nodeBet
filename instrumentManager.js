@@ -104,9 +104,9 @@ exports.instrumentManager = function(args) {
         self.orders[order.tag] = order
         user.orders[order.tag] = order
 
-        orderInsert.route("cancel").receive(once(function() {
+        orderInsert.route("cancel").receiveOne(function() {
             order.pull()
-        }))
+        })
         
         orderInsert.route("tag").send(order.tag)
 
