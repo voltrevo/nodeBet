@@ -155,11 +155,6 @@ function quoter()
                     function() {
                         log.info("quoter bid trade")
                         setTimeout(self.refreshBid, config.quoter.refreshInterval)
-                    },
-                    function() {
-                        if (order !== self.bidOrder) {
-                            sendDelete(order, true)
-                        }
                     })
                 
                 self.bidOrder = order
@@ -182,11 +177,6 @@ function quoter()
                         function() {
                             log.info("quoter bid trade")
                             setTimeout(self.refreshBid, config.quoter.refreshInterval)
-                        },
-                        function() {
-                            if (order !== self.bidOrder) {
-                                sendDelete(order, true)
-                            }
                         })
                     
                     self.bidOrder = order
@@ -215,12 +205,6 @@ function quoter()
                     function() {
                         log.info("quoter offer trade")
                         setTimeout(self.refreshOffer, config.quoter.refreshInterval)
-                    },
-                    function() {
-                        if (order !== self.offerOrder)
-                        {
-                            sendDelete(order, true)
-                        }
                     })
                 
                 self.offerOrder = order
@@ -235,11 +219,6 @@ function quoter()
                         function() {
                             log.info("quoter offer trade")
                             setTimeout(self.refreshOffer, config.quoter.refreshInterval)
-                        },
-                        function() {
-                            if (order !== self.offerOrder) {
-                                sendDelete(order, true)
-                            }
                         })
                     
                     self.offerOrder = order

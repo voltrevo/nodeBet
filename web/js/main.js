@@ -157,6 +157,7 @@ var sendDelete
         cc.scrollTop = cc.scrollHeight
     }
 
+    // TODO: this is horrible
     function showHotkeys() {
         alertify.alert(
             "d: delete all orders<br>" +
@@ -180,7 +181,7 @@ var sendDelete
         }
     }
 
-    sendOrderInsert = function(side, price, volume, tradeCb, tagCb) {
+    sendOrderInsert = function(side, price, volume, tradeCb) {
         price = ldr.normalizePrice(price)
         
         var order = {
@@ -193,17 +194,12 @@ var sendDelete
         
         order.sock = sock.route("orderInsert").send(order)
 
-        order.sock.route("tag").receiveOne(function(tag) { // TODO: tags should be obsolete now
+        order.sock.route("tag").receiveOne(function(tag) { // TODO: still interested in removing the tag concept... but not sure anymore
             order.tag = tag.value
             orders[tag.value] = order
             
             order.orderStatus = "active"
             order.webElements.statusCell.innerHTML = "active"
-
-            // TODO: do this better
-            if (tagCb) {
-                tagCb()
-            }
         })
 
         order.sock.route("trade").receiveMany(function(tradeSock, stop) {
@@ -249,6 +245,7 @@ var sendDelete
                     500)
             }
             
+            // TODO: do this better
             if (tradeCb) {
                 tradeCb()
             }
