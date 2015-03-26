@@ -1,3 +1,5 @@
+// TODO: deal with this... probably doesn't work anymore
+
 'use strict';
 
 var web_socket_server = require('ws').Server
