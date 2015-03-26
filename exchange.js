@@ -2,32 +2,25 @@
 
 // TODO: More logging
 
-var fs = require("fs")
-
-var config = require("configure")
 var log = require("./winstonWrapper")
 
 var instrumentManager = require("./instrumentManager").instrumentManager
 var assert = require("assert")
 var hexSha256 = require("./sha2").hexSha256
 var utils = require("./web/js/utils")
-var sockception = require("sockception")
 var util = require("util")
 
-exports.exchange = new (function() {
+module.exports = function exchange(config, usersDbHandle, wss) {
     var self = this
 
-    this.config = config.exchange
+    this.config = config
     
-    this.wss = sockception.listen({
-        port: self.config.port,
-        log: log
-    })
+    this.wss = wss
 
-    this.usersDb = JSON.parse(fs.readFileSync(self.config.usersFile))
+    this.usersDb = usersDbHandle.read()
     
     this.writeUsersDb = function() {
-        fs.writeFileSync(self.config.usersFile, JSON.stringify(self.usersDb))
+        usersDbHandle.write(self.usersDb)
     }
     
     this.users = {}
@@ -358,4 +351,4 @@ exports.exchange = new (function() {
             ping.send("pong")
         })
     }
-})()
+}

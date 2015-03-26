@@ -2,7 +2,7 @@
   "name": "nodeBet",
   "version": "0.0.1",
   "description": "A web-based betting/trading platform",
-  "main": "exchange.js",
+  "main": "run.js",
   "directories": {
     "test": "tests"
   },
